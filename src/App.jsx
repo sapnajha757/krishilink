@@ -1,12 +1,27 @@
 import { useState } from "react"
 import Auth from "./Auth"
+import FarmerDashboard from "./FarmerDashboard"
 
 function App() {
   const [user, setUser] = useState(null)
   const [page, setPage] = useState("home")
 
+  const handleLogin = (u) => {
+    setUser(u)
+    setPage("home")
+  }
+
+  const handleLogout = () => {
+    setUser(null)
+    setPage("home")
+  }
+
   if (page === "auth") {
-    return <Auth onLogin={(u) => { setUser(u); setPage("home") }} />
+    return <Auth onLogin={handleLogin} />
+  }
+
+  if (page === "farmer" && user) {
+    return <FarmerDashboard user={user} onBack={handleLogout} />
   }
 
   return (
@@ -15,7 +30,10 @@ function App() {
         <h1 className="text-2xl font-bold text-green-700">🌾 KrishiLink</h1>
         <div className="flex gap-4 items-center">
           {user ? (
-            <span className="text-green-700 font-medium">👋 {user.email}</span>
+            <div className="flex gap-3 items-center">
+              <button onClick={() => setPage("farmer")} className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">👨‍🌾 Farmer Dashboard</button>
+              <button onClick={handleLogout} className="text-gray-500 hover:text-red-500 text-sm">Logout</button>
+            </div>
           ) : (
             <>
               <button onClick={() => setPage("auth")} className="text-green-700 font-medium hover:underline">Login</button>
@@ -29,7 +47,7 @@ function App() {
         <p className="text-xl text-gray-600 mb-8">Buy directly from local farmers. No middlemen. Pure and fresh.</p>
         <div className="flex gap-4 justify-center">
           <button onClick={() => setPage("auth")} className="bg-green-600 text-white px-8 py-3 rounded-full text-lg hover:bg-green-700">Shop Now</button>
-          <button onClick={() => setPage("auth")} className="border-2 border-green-600 text-green-600 px-8 py-3 rounded-full text-lg">Sell Your Produce</button>
+          <button onClick={() => user ? setPage("farmer") : setPage("auth")} className="border-2 border-green-600 text-green-600 px-8 py-3 rounded-full text-lg">Sell Your Produce</button>
         </div>
       </div>
       <div className="px-8 py-10">
