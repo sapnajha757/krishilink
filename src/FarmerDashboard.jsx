@@ -3,20 +3,35 @@ import { supabase } from './supabase'
 
 function FarmerDashboard({ user, onBack }) {
   const [products, setProducts] = useState([])
+  const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
+  const [editProduct, setEditProduct] = useState(null)
+  const [activeTab, setActiveTab] = useState('products')
   const [form, setForm] = useState({
-    name: '', description: '', price_per_kg: '', quantity_kg: '', category: 'Vegetables', location: ''
+    name: '', description: '', price_per_kg: '', quantity_kg: '', category: 'Vegetables', location: '', is_available: true
   })
 
-  useEffect(() => { fetchProducts() }, [])
+  useEffect(() => { fetchProducts(); fetchOrders() }, [])
 
   const fetchProducts = async () => {
     const { data } = await supabase.from('products').select('*').eq('farmer_id', user.id)
     if (data) setProducts(data)
   }
 
+  const fetchOrders = async () => {
+    const { data } = await supabase
+      .from('orders')
+      .select('*, products(name, category)')
+      .eq('farmer_id', user.id)
+      .order('created_at', { ascending: false })
+    if (data) setOrders(data)
+  }
+
   const handleAdd = async () => {
+    if (!form.name || !form.price_per_kg || !form.quantity_kg || !form.location) {
+      alert('Please fill all fields!'); return
+    }
     setLoading(true)
     await supabase.from('products').insert({
       ...form,
@@ -24,15 +39,69 @@ function FarmerDashboard({ user, onBack }) {
       price_per_kg: parseFloat(form.price_per_kg),
       quantity_kg: parseFloat(form.quantity_kg),
     })
-    setForm({ name: '', description: '', price_per_kg: '', quantity_kg: '', category: 'Vegetables', location: '' })
-    setShowForm(false)
+    resetForm()
+    fetchProducts()
+    setLoading(false)
+  }
+
+  const handleEdit = async () => {
+    setLoading(true)
+    await supabase.from('products').update({
+      ...form,
+      price_per_kg: parseFloat(form.price_per_kg),
+      quantity_kg: parseFloat(form.quantity_kg),
+    }).eq('id', editProduct.id)
+    resetForm()
     fetchProducts()
     setLoading(false)
   }
 
   const handleDelete = async (id) => {
+    if (!confirm('Delete this product?')) return
     await supabase.from('products').delete().eq('id', id)
     fetchProducts()
+  }
+
+  const toggleAvailability = async (p) => {
+    await supabase.from('products').update({ is_available: !p.is_available }).eq('id', p.id)
+    fetchProducts()
+  }
+
+  const resetForm = () => {
+    setForm({ name: '', description: '', price_per_kg: '', quantity_kg: '', category: 'Vegetables', location: '', is_available: true })
+    setShowForm(false)
+    setEditProduct(null)
+  }
+
+  const openEdit = (p) => {
+    setEditProduct(p)
+    setForm({
+      name: p.name, description: p.description, price_per_kg: p.price_per_kg,
+      quantity_kg: p.quantity_kg, category: p.category, location: p.location, is_available: p.is_available
+    })
+    setShowForm(true)
+    setActiveTab('products')
+  }
+
+  const totalEarnings = orders
+    .filter(o => o.status === 'delivered')
+    .reduce((sum, o) => sum + o.total_price, 0)
+
+  const pendingOrders = orders.filter(o => o.status === 'pending').length
+
+  const getCategoryEmoji = (cat) => {
+    if (cat === 'Vegetables') return '🥬'
+    if (cat === 'Fruits') return '🍎'
+    if (cat === 'Grains') return '🌾'
+    if (cat === 'Dairy') return '🥛'
+    return '🌿'
+  }
+
+  const getStatusColor = (status) => {
+    if (status === 'pending') return 'bg-yellow-100 text-yellow-700'
+    if (status === 'confirmed') return 'bg-blue-100 text-blue-700'
+    if (status === 'delivered') return 'bg-green-100 text-green-700'
+    return 'bg-gray-100 text-gray-600'
   }
 
   return (
@@ -41,116 +110,227 @@ function FarmerDashboard({ user, onBack }) {
       <nav className="bg-white shadow-md px-6 py-4 flex justify-between items-center">
         <h1 className="text-2xl font-bold text-green-700">🌾 KrishiLink</h1>
         <div className="flex gap-4 items-center">
-          <span className="text-green-700 font-medium">👨‍🌾 Farmer Dashboard</span>
+          <span className="text-green-700 font-medium hidden md:block">👨‍🌾 {user.email}</span>
           <button onClick={onBack} className="text-gray-500 hover:text-red-500 text-sm">Logout</button>
         </div>
       </nav>
 
       <div className="max-w-4xl mx-auto px-6 py-8">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-green-800">My Products</h2>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-3 gap-4 mb-8">
+          <div className="bg-white rounded-2xl shadow p-5 text-center">
+            <p className="text-3xl font-bold text-green-700">{products.length}</p>
+            <p className="text-gray-500 text-sm mt-1">Total Products</p>
+          </div>
+          <div className="bg-white rounded-2xl shadow p-5 text-center">
+            <p className="text-3xl font-bold text-yellow-600">{pendingOrders}</p>
+            <p className="text-gray-500 text-sm mt-1">Pending Orders</p>
+          </div>
+          <div className="bg-white rounded-2xl shadow p-5 text-center">
+            <p className="text-3xl font-bold text-blue-600">₹{totalEarnings}</p>
+            <p className="text-gray-500 text-sm mt-1">Total Earnings</p>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-2 mb-6">
           <button
-            onClick={() => setShowForm(!showForm)}
-            className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-medium"
+            onClick={() => setActiveTab('products')}
+            className={`px-6 py-2 rounded-xl font-medium transition ${activeTab === 'products' ? 'bg-green-600 text-white' : 'bg-white text-gray-600 border border-gray-300'}`}
           >
-            {showForm ? 'Cancel' : '+ Add Product'}
+            🌾 My Products
+          </button>
+          <button
+            onClick={() => setActiveTab('orders')}
+            className={`px-6 py-2 rounded-xl font-medium transition ${activeTab === 'orders' ? 'bg-green-600 text-white' : 'bg-white text-gray-600 border border-gray-300'}`}
+          >
+            📦 Incoming Orders {pendingOrders > 0 && <span className="ml-1 bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{pendingOrders}</span>}
           </button>
         </div>
 
-        {/* Add Product Form */}
-        {showForm && (
-          <div className="bg-white rounded-2xl shadow p-6 mb-6">
-            <h3 className="text-lg font-bold text-green-700 mb-4">Add New Product</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <input
-                placeholder="Product Name (e.g. Fresh Tomatoes)"
-                value={form.name}
-                onChange={(e) => setForm({...form, name: e.target.value})}
-                className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500"
-              />
-              <select
-                value={form.category}
-                onChange={(e) => setForm({...form, category: e.target.value})}
-                className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500"
+        {/* ===== PRODUCTS TAB ===== */}
+        {activeTab === 'products' && (
+          <>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-green-800">My Products</h2>
+              <button
+                onClick={() => { resetForm(); setShowForm(!showForm) }}
+                className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-medium"
               >
-                <option>Vegetables</option>
-                <option>Fruits</option>
-                <option>Grains</option>
-                <option>Dairy</option>
-              </select>
-              <input
-                placeholder="Price per KG (₹)"
-                value={form.price_per_kg}
-                onChange={(e) => setForm({...form, price_per_kg: e.target.value})}
-                type="number"
-                className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500"
-              />
-              <input
-                placeholder="Available Quantity (KG)"
-                value={form.quantity_kg}
-                onChange={(e) => setForm({...form, quantity_kg: e.target.value})}
-                type="number"
-                className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500"
-              />
-              <input
-                placeholder="Location (e.g. Nashik, Maharashtra)"
-                value={form.location}
-                onChange={(e) => setForm({...form, location: e.target.value})}
-                className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500"
-              />
-              <input
-                placeholder="Description"
-                value={form.description}
-                onChange={(e) => setForm({...form, description: e.target.value})}
-                className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500"
-              />
+                {showForm ? 'Cancel' : '+ Add Product'}
+              </button>
             </div>
-            <button
-              onClick={handleAdd}
-              disabled={loading}
-              className="mt-4 bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 font-bold w-full"
-            >
-              {loading ? 'Adding...' : 'Add Product'}
-            </button>
-          </div>
+
+            {/* Add/Edit Form */}
+            {showForm && (
+              <div className="bg-white rounded-2xl shadow p-6 mb-6">
+                <h3 className="text-lg font-bold text-green-700 mb-4">
+                  {editProduct ? '✏️ Edit Product' : '➕ Add New Product'}
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <input
+                    placeholder="Product Name (e.g. Fresh Tomatoes)"
+                    value={form.name}
+                    onChange={(e) => setForm({...form, name: e.target.value})}
+                    className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500"
+                  />
+                  <select
+                    value={form.category}
+                    onChange={(e) => setForm({...form, category: e.target.value})}
+                    className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500"
+                  >
+                    <option>Vegetables</option>
+                    <option>Fruits</option>
+                    <option>Grains</option>
+                    <option>Dairy</option>
+                  </select>
+                  <input
+                    placeholder="Price per KG (₹)"
+                    value={form.price_per_kg}
+                    onChange={(e) => setForm({...form, price_per_kg: e.target.value})}
+                    type="number"
+                    className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500"
+                  />
+                  <input
+                    placeholder="Available Quantity (KG)"
+                    value={form.quantity_kg}
+                    onChange={(e) => setForm({...form, quantity_kg: e.target.value})}
+                    type="number"
+                    className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500"
+                  />
+                  <input
+                    placeholder="Location (e.g. Nashik, Maharashtra)"
+                    value={form.location}
+                    onChange={(e) => setForm({...form, location: e.target.value})}
+                    className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500"
+                  />
+                  <input
+                    placeholder="Description"
+                    value={form.description}
+                    onChange={(e) => setForm({...form, description: e.target.value})}
+                    className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500"
+                  />
+                </div>
+                <button
+                  onClick={editProduct ? handleEdit : handleAdd}
+                  disabled={loading}
+                  className="mt-4 bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 font-bold w-full"
+                >
+                  {loading ? 'Saving...' : editProduct ? '✅ Save Changes' : '✅ Add Product'}
+                </button>
+              </div>
+            )}
+
+            {/* Products List */}
+            {products.length === 0 ? (
+              <div className="text-center py-20 text-gray-400">
+                <p className="text-5xl mb-4">🌾</p>
+                <p className="text-xl">No products yet! Add your first product.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {products.map((p) => (
+                  <div key={p.id} className={`bg-white rounded-2xl shadow p-5 hover:shadow-md border-2 ${p.is_available ? 'border-transparent' : 'border-red-200'}`}>
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl">{getCategoryEmoji(p.category)}</span>
+                          <h3 className="font-bold text-lg text-green-800">{p.name}</h3>
+                        </div>
+                        <p className="text-gray-500 text-sm mt-1">{p.category} • 📍 {p.location}</p>
+                        <p className="text-gray-600 text-sm mt-1">{p.description}</p>
+                      </div>
+                      <div className="flex flex-col gap-2 ml-3">
+                        <button onClick={() => openEdit(p)} className="text-blue-400 hover:text-blue-600 text-lg">✏️</button>
+                        <button onClick={() => handleDelete(p.id)} className="text-red-400 hover:text-red-600 text-lg">🗑️</button>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 mt-3 flex-wrap items-center">
+                      <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-medium">
+                        ₹{p.price_per_kg}/kg
+                      </span>
+                      <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-medium">
+                        {p.quantity_kg} kg
+                      </span>
+                      {/* Toggle availability */}
+                      <button
+                        onClick={() => toggleAvailability(p)}
+                        className={`ml-auto px-3 py-1 rounded-full text-xs font-medium transition ${p.is_available ? 'bg-green-500 text-white' : 'bg-red-100 text-red-600'}`}
+                      >
+                        {p.is_available ? '✅ Available' : '❌ Hidden'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
 
-        {/* Products List */}
-        {products.length === 0 ? (
-          <div className="text-center py-20 text-gray-400">
-            <p className="text-5xl mb-4">🌾</p>
-            <p className="text-xl">No products yet! Add your first product.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {products.map((p) => (
-              <div key={p.id} className="bg-white rounded-2xl shadow p-5 hover:shadow-md">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="font-bold text-lg text-green-800">{p.name}</h3>
-                    <p className="text-gray-500 text-sm">{p.category} • {p.location}</p>
-                    <p className="text-gray-600 text-sm mt-1">{p.description}</p>
-                  </div>
-                  <button
-                    onClick={() => handleDelete(p.id)}
-                    className="text-red-400 hover:text-red-600 text-sm"
-                  >
-                    🗑️
-                  </button>
-                </div>
-                <div className="flex gap-4 mt-3">
-                  <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-medium">
-                    ₹{p.price_per_kg}/kg
-                  </span>
-                  <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-medium">
-                    {p.quantity_kg} kg available
-                  </span>
-                </div>
+        {/* ===== ORDERS TAB ===== */}
+        {activeTab === 'orders' && (
+          <>
+            <h2 className="text-xl font-bold text-green-800 mb-4">Incoming Orders</h2>
+            {orders.length === 0 ? (
+              <div className="text-center py-20 text-gray-400">
+                <p className="text-5xl mb-4">📦</p>
+                <p className="text-xl">No orders yet!</p>
               </div>
-            ))}
-          </div>
+            ) : (
+              <div className="space-y-3">
+                {orders.map(order => (
+                  <div key={order.id} className="bg-white rounded-2xl shadow p-5">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-bold text-gray-800">
+                          {getCategoryEmoji(order.products?.category)} {order.products?.name || 'Product'}
+                        </p>
+                        <p className="text-gray-500 text-sm mt-1">
+                          {order.quantity_kg} kg • ₹{order.total_price}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          {new Date(order.created_at).toLocaleDateString('en-IN', {
+                            day: 'numeric', month: 'short', year: 'numeric'
+                          })}
+                        </p>
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <span className={`text-xs px-3 py-1 rounded-full font-medium capitalize ${getStatusColor(order.status)}`}>
+                          {order.status}
+                        </span>
+                        {/* Status update buttons */}
+                        {order.status === 'pending' && (
+                          <button
+                            onClick={async () => {
+                              await supabase.from('orders').update({ status: 'confirmed' }).eq('id', order.id)
+                              fetchOrders()
+                            }}
+                            className="text-xs bg-blue-500 text-white px-3 py-1 rounded-full hover:bg-blue-600"
+                          >
+                            Confirm Order
+                          </button>
+                        )}
+                        {order.status === 'confirmed' && (
+                          <button
+                            onClick={async () => {
+                              await supabase.from('orders').update({ status: 'delivered' }).eq('id', order.id)
+                              fetchOrders()
+                            }}
+                            className="text-xs bg-green-500 text-white px-3 py-1 rounded-full hover:bg-green-600"
+                          >
+                            Mark Delivered
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
+
       </div>
     </div>
   )
