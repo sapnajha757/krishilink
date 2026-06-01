@@ -50,7 +50,9 @@ function Marketplace({ user, onBack }) {
     }
   }
 
+  // FIX: user check added
   const fetchOrders = async () => {
+    if (!user) { setOrdersLoading(false); return }
     setOrdersLoading(true)
     const { data } = await supabase
       .from('orders')
@@ -110,7 +112,7 @@ function Marketplace({ user, onBack }) {
   const cartTotal = cart.reduce((sum, item) => sum + item.price_per_kg * item.cartQty, 0)
 
   const placeCartOrders = async () => {
-    if (!user) { alert('Please login!'); return }
+    if (!user) { alert('Please login to place orders!'); return }
     const inserts = cart.map(item => ({
       consumer_id: user.id,
       farmer_id: item.farmer_id,
@@ -150,6 +152,7 @@ function Marketplace({ user, onBack }) {
       <nav className="bg-white shadow-md px-6 py-4 flex justify-between items-center sticky top-0 z-40">
         <h1 className="text-2xl font-bold text-green-700">🌾 KrishiLink</h1>
         <div className="flex gap-3 items-center">
+
           {/* Cart Button */}
           <button
             onClick={() => { setShowCart(true); setShowOrders(false) }}
@@ -162,13 +165,20 @@ function Marketplace({ user, onBack }) {
               </span>
             )}
           </button>
-          {/* Orders Button */}
+
+          {/* Orders Button - FIX: login check */}
           <button
-            onClick={() => { setShowOrders(true); setShowCart(false); fetchOrders() }}
+            onClick={() => {
+              if (!user) { alert('Please login to view your orders!'); return }
+              setShowOrders(true)
+              setShowCart(false)
+              fetchOrders()
+            }}
             className="bg-blue-50 text-blue-700 px-4 py-2 rounded-xl font-medium hover:bg-blue-100 transition"
           >
             📦 My Orders
           </button>
+
           <button onClick={onBack} className="text-gray-500 hover:text-red-500 text-sm">← Back</button>
         </div>
       </nav>
@@ -215,7 +225,8 @@ function Marketplace({ user, onBack }) {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {filtered.map(p => (
               <div key={p.id} className="bg-white rounded-2xl shadow hover:shadow-lg transition p-5 flex flex-col">
-                {/* Product Image / Emoji */}
+
+                {/* Product Emoji */}
                 <div
                   className="bg-green-100 rounded-xl h-32 flex items-center justify-center text-5xl mb-4 cursor-pointer hover:bg-green-200 transition"
                   onClick={() => setSelectedProduct(p)}
@@ -287,7 +298,8 @@ function Marketplace({ user, onBack }) {
       {/* ========== CART SIDEBAR ========== */}
       {showCart && (
         <div className="fixed inset-0 z-50 flex">
-          <div className="flex-1 bg-black bg-opacity-40" onClick={() => setShowCart(false)} />
+          {/* FIX: bg-black/40 instead of bg-opacity-40 */}
+          <div className="flex-1 bg-black/40 backdrop-blur-sm" onClick={() => setShowCart(false)} />
           <div className="w-full max-w-md bg-white h-full shadow-2xl flex flex-col overflow-hidden">
             <div className="px-6 py-4 border-b flex justify-between items-center bg-green-700 text-white">
               <h2 className="text-xl font-bold">🛒 Your Cart ({cart.length})</h2>
@@ -342,7 +354,8 @@ function Marketplace({ user, onBack }) {
       {/* ========== ORDER HISTORY SIDEBAR ========== */}
       {showOrders && (
         <div className="fixed inset-0 z-50 flex">
-          <div className="flex-1 bg-black bg-opacity-40" onClick={() => setShowOrders(false)} />
+          {/* FIX: bg-black/40 */}
+          <div className="flex-1 bg-black/40 backdrop-blur-sm" onClick={() => setShowOrders(false)} />
           <div className="w-full max-w-md bg-white h-full shadow-2xl flex flex-col overflow-hidden">
             <div className="px-6 py-4 border-b flex justify-between items-center bg-blue-700 text-white">
               <h2 className="text-xl font-bold">📦 My Orders</h2>
@@ -357,6 +370,7 @@ function Marketplace({ user, onBack }) {
               <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
                 <p className="text-5xl mb-4">📦</p>
                 <p className="text-lg">No orders yet!</p>
+                <p className="text-sm mt-1">Buy something from the marketplace</p>
               </div>
             ) : (
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -391,7 +405,7 @@ function Marketplace({ user, onBack }) {
       {/* ========== PRODUCT DETAIL MODAL ========== */}
       {selectedProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setSelectedProduct(null)} />
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedProduct(null)} />
           <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 z-10">
             <button
               onClick={() => setSelectedProduct(null)}
