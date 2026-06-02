@@ -12,10 +12,14 @@ function Marketplace({ user, onBack }) {
   const [cart, setCart] = useState([])
   const [showCart, setShowCart] = useState(false)
   const [showOrders, setShowOrders] = useState(false)
+  const [showPayments, setShowPayments] = useState(false)
   const [orders, setOrders] = useState([])
   const [ordersLoading, setOrdersLoading] = useState(false)
+  const [payments, setPayments] = useState([])
+  const [paymentsLoading, setPaymentsLoading] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [farmers, setFarmers] = useState({})
+  const [checkoutLoading, setCheckoutLoading] = useState(false)
 
   useEffect(() => { fetchProducts() }, [])
 
@@ -61,6 +65,23 @@ function Marketplace({ user, onBack }) {
       .order('created_at', { ascending: false })
     if (data) setOrders(data)
     setOrdersLoading(false)
+  }
+
+  const fetchPayments = async () => {
+    if (!user) { setPaymentsLoading(false); return }
+    setPaymentsLoading(true)
+    try {
+      const response = await fetch(`http://localhost:4000/api/payments?consumerId=${encodeURIComponent(user.id)}`)
+      const data = await response.json()
+      if (response.ok) {
+        setPayments(data.payments || [])
+      } else {
+        setPayments([])
+      }
+    } catch {
+      setPayments([])
+    }
+    setPaymentsLoading(false)
   }
 
   const handleQuantityChange = (productId, value) => {
@@ -130,6 +151,96 @@ function Marketplace({ user, onBack }) {
     }
   }
 
+  const loadRazorpayScript = () => {
+    if (window.Razorpay) return Promise.resolve(true)
+    return new Promise((resolve) => {
+      const script = document.createElement('script')
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+      script.onload = () => resolve(true)
+      script.onerror = () => resolve(false)
+      document.body.appendChild(script)
+    })
+  }
+
+  const handleCheckout = async () => {
+    if (!user) { alert('Please login to checkout!'); return }
+    if (cart.length === 0) { alert('Cart is empty!'); return }
+
+    setCheckoutLoading(true)
+    try {
+      const scriptLoaded = await loadRazorpayScript()
+      if (!scriptLoaded) throw new Error('Razorpay SDK load failed')
+
+      const checkoutPayload = {
+        consumerId: user.id,
+        items: cart.map(item => ({
+          id: item.id,
+          name: item.name,
+          farmer_id: item.farmer_id,
+          quantity_kg: item.cartQty,
+          price_per_kg: item.price_per_kg,
+        })),
+      }
+
+      const checkoutRes = await fetch('http://localhost:4000/api/payments/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(checkoutPayload),
+      })
+      const checkoutData = await checkoutRes.json()
+      if (!checkoutRes.ok) throw new Error(checkoutData?.error || 'Checkout init failed')
+
+      const options = {
+        key: checkoutData.keyId,
+        amount: checkoutData.amount,
+        currency: checkoutData.currency,
+        name: 'KrishiLink',
+        description: 'Order checkout',
+        order_id: checkoutData.orderId,
+        prefill: {
+          email: user.email || '',
+        },
+        theme: {
+          color: '#15803d',
+        },
+        handler: async (response) => {
+          try {
+            const verifyRes = await fetch('http://localhost:4000/api/payments/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(response),
+            })
+            const verifyData = await verifyRes.json()
+            if (!verifyRes.ok || !verifyData.verified) {
+              throw new Error(verifyData?.error || 'Payment verification failed')
+            }
+
+            await placeCartOrders()
+            setOrdered(`Payment ${verifyData.paymentStatus || 'successful'} • Orders placed!`)
+            setTimeout(() => setOrdered(null), 4000)
+          } catch (error) {
+            setOrdered(`Payment failed: ${error.message}`)
+            setTimeout(() => setOrdered(null), 4000)
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            setOrdered('Payment cancelled.')
+            setTimeout(() => setOrdered(null), 2000)
+          },
+        },
+      }
+
+      const rzp = new window.Razorpay(options)
+      rzp.open()
+    } catch (error) {
+      setOrdered(`Checkout error: ${error.message}`)
+      setTimeout(() => setOrdered(null), 4000)
+    } finally {
+      setCheckoutLoading(false)
+    }
+  }
+
   const getCategoryEmoji = (cat) => {
     if (cat === 'Vegetables') return '🥬'
     if (cat === 'Fruits') return '🍎'
@@ -172,11 +283,24 @@ function Marketplace({ user, onBack }) {
               if (!user) { alert('Please login to view your orders!'); return }
               setShowOrders(true)
               setShowCart(false)
+              setShowPayments(false)
               fetchOrders()
             }}
             className="bg-blue-50 text-blue-700 px-4 py-2 rounded-xl font-medium hover:bg-blue-100 transition"
           >
             📦 My Orders
+          </button>
+          <button
+            onClick={() => {
+              if (!user) { alert('Please login to view payment history!'); return }
+              setShowPayments(true)
+              setShowOrders(false)
+              setShowCart(false)
+              fetchPayments()
+            }}
+            className="bg-purple-50 text-purple-700 px-4 py-2 rounded-xl font-medium hover:bg-purple-100 transition"
+          >
+            💳 Payments
           </button>
 
           <button onClick={onBack} className="text-gray-500 hover:text-red-500 text-sm">← Back</button>
@@ -339,10 +463,11 @@ function Marketplace({ user, onBack }) {
                     <span className="text-2xl font-bold text-green-700">₹{cartTotal.toFixed(0)}</span>
                   </div>
                   <button
-                    onClick={placeCartOrders}
-                    className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition"
+                    onClick={handleCheckout}
+                    disabled={checkoutLoading}
+                    className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition disabled:opacity-70"
                   >
-                    ✅ Place All Orders
+                    {checkoutLoading ? 'Processing payment...' : '💳 Pay with Razorpay'}
                   </button>
                 </div>
               </>
@@ -392,6 +517,57 @@ function Marketplace({ user, onBack }) {
                       </div>
                       <span className={`text-xs px-3 py-1 rounded-full font-medium capitalize ${getStatusColor(order.status)}`}>
                         {order.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ========== PAYMENT HISTORY SIDEBAR ========== */}
+      {showPayments && (
+        <div className="fixed inset-0 z-50 flex">
+          <div className="flex-1 bg-black/40 backdrop-blur-sm" onClick={() => setShowPayments(false)} />
+          <div className="w-full max-w-md bg-white h-full shadow-2xl flex flex-col overflow-hidden">
+            <div className="px-6 py-4 border-b flex justify-between items-center bg-purple-700 text-white">
+              <h2 className="text-xl font-bold">💳 Payment History</h2>
+              <button onClick={() => setShowPayments(false)} className="text-white text-2xl">×</button>
+            </div>
+
+            {paymentsLoading ? (
+              <div className="flex-1 flex items-center justify-center text-gray-400">
+                Loading payments...
+              </div>
+            ) : payments.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
+                <p className="text-5xl mb-4">💳</p>
+                <p className="text-lg">No payments yet!</p>
+                <p className="text-sm mt-1">Checkout with Razorpay to see history</p>
+              </div>
+            ) : (
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {payments.map(payment => (
+                  <div key={payment.order_id || payment.orderId} className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                    <div className="flex justify-between items-start gap-3">
+                      <div>
+                        <p className="font-semibold text-gray-800 text-sm break-all">
+                          Order: {payment.order_id || payment.orderId}
+                        </p>
+                        <p className="text-sm text-gray-500 mt-1">
+                          Amount: ₹{payment.amount || 0} {payment.currency || 'INR'}
+                        </p>
+                        {payment.method && (
+                          <p className="text-xs text-gray-500 mt-1">Method: {payment.method}</p>
+                        )}
+                        <p className="text-xs text-gray-400 mt-1">
+                          {new Date(payment.updated_at || payment.created_at || Date.now()).toLocaleString('en-IN')}
+                        </p>
+                      </div>
+                      <span className="text-xs px-3 py-1 rounded-full font-medium capitalize bg-purple-100 text-purple-700">
+                        {payment.checkout_status || 'unknown'}
                       </span>
                     </div>
                   </div>

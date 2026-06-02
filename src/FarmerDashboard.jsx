@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabase'
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000'
+
 function FarmerDashboard({ user, onBack }) {
   const [products, setProducts] = useState([])
   const [orders, setOrders] = useState([])
@@ -8,6 +10,11 @@ function FarmerDashboard({ user, onBack }) {
   const [showForm, setShowForm] = useState(false)
   const [editProduct, setEditProduct] = useState(null)
   const [activeTab, setActiveTab] = useState('products')
+  const [advisory, setAdvisory] = useState('')
+  const [weatherSource, setWeatherSource] = useState('')
+  const [forecast, setForecast] = useState([])
+  const [advisoryLoading, setAdvisoryLoading] = useState(false)
+  const [advisoryForm, setAdvisoryForm] = useState({ location: '', month: '' })
   const [form, setForm] = useState({
     name: '', description: '', price_per_kg: '', quantity_kg: '', category: 'Vegetables', location: '', is_available: true
   })
@@ -26,6 +33,35 @@ function FarmerDashboard({ user, onBack }) {
       .eq('farmer_id', user.id)
       .order('created_at', { ascending: false })
     if (data) setOrders(data)
+  }
+
+  const getAdvisory = async () => {
+    if (!advisoryForm.location) {
+      alert('Location bharo!'); return
+    }
+    setAdvisoryLoading(true)
+    setAdvisory('')
+    setForecast([])
+    setWeatherSource('')
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/weather-advisory`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: advisoryForm.location,
+        })
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data?.error || 'API request failed')
+      }
+      setAdvisory(data.advisory || data.result || 'No advisory returned.')
+      setForecast(data.forecast || [])
+      setWeatherSource(data.source || '')
+    } catch (err) {
+      setAdvisory(`Error aaya: ${err.message}. Server check karo.`)
+    }
+    setAdvisoryLoading(false)
   }
 
   const handleAdd = async () => {
@@ -106,7 +142,6 @@ function FarmerDashboard({ user, onBack }) {
 
   return (
     <div className="min-h-screen bg-green-50">
-      {/* Navbar */}
       <nav className="bg-white shadow-md px-6 py-4 flex justify-between items-center">
         <h1 className="text-2xl font-bold text-green-700">🌾 KrishiLink</h1>
         <div className="flex gap-4 items-center">
@@ -117,7 +152,6 @@ function FarmerDashboard({ user, onBack }) {
 
       <div className="max-w-4xl mx-auto px-6 py-8">
 
-        {/* Stats Cards */}
         <div className="grid grid-cols-3 gap-4 mb-8">
           <div className="bg-white rounded-2xl shadow p-5 text-center">
             <p className="text-3xl font-bold text-green-700">{products.length}</p>
@@ -133,96 +167,49 @@ function FarmerDashboard({ user, onBack }) {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-2 mb-6">
-          <button
-            onClick={() => setActiveTab('products')}
-            className={`px-6 py-2 rounded-xl font-medium transition ${activeTab === 'products' ? 'bg-green-600 text-white' : 'bg-white text-gray-600 border border-gray-300'}`}
-          >
+        <div className="flex gap-2 mb-6 flex-wrap">
+          <button onClick={() => setActiveTab('products')} className={`px-6 py-2 rounded-xl font-medium transition ${activeTab === 'products' ? 'bg-green-600 text-white' : 'bg-white text-gray-600 border border-gray-300'}`}>
             🌾 My Products
           </button>
-          <button
-            onClick={() => setActiveTab('orders')}
-            className={`px-6 py-2 rounded-xl font-medium transition ${activeTab === 'orders' ? 'bg-green-600 text-white' : 'bg-white text-gray-600 border border-gray-300'}`}
-          >
+          <button onClick={() => setActiveTab('orders')} className={`px-6 py-2 rounded-xl font-medium transition ${activeTab === 'orders' ? 'bg-green-600 text-white' : 'bg-white text-gray-600 border border-gray-300'}`}>
             📦 Incoming Orders {pendingOrders > 0 && <span className="ml-1 bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{pendingOrders}</span>}
+          </button>
+          <button onClick={() => setActiveTab('advisory')} className={`px-6 py-2 rounded-xl font-medium transition ${activeTab === 'advisory' ? 'bg-green-600 text-white' : 'bg-white text-gray-600 border border-gray-300'}`}>
+            🤖 AI Advisory
           </button>
         </div>
 
-        {/* ===== PRODUCTS TAB ===== */}
         {activeTab === 'products' && (
           <>
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold text-green-800">My Products</h2>
-              <button
-                onClick={() => { resetForm(); setShowForm(!showForm) }}
-                className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-medium"
-              >
+              <button onClick={() => { resetForm(); setShowForm(!showForm) }} className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-medium">
                 {showForm ? 'Cancel' : '+ Add Product'}
               </button>
             </div>
 
-            {/* Add/Edit Form */}
             {showForm && (
               <div className="bg-white rounded-2xl shadow p-6 mb-6">
-                <h3 className="text-lg font-bold text-green-700 mb-4">
-                  {editProduct ? '✏️ Edit Product' : '➕ Add New Product'}
-                </h3>
+                <h3 className="text-lg font-bold text-green-700 mb-4">{editProduct ? '✏️ Edit Product' : '➕ Add New Product'}</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <input
-                    placeholder="Product Name (e.g. Fresh Tomatoes)"
-                    value={form.name}
-                    onChange={(e) => setForm({...form, name: e.target.value})}
-                    className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500"
-                  />
-                  <select
-                    value={form.category}
-                    onChange={(e) => setForm({...form, category: e.target.value})}
-                    className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500"
-                  >
+                  <input placeholder="Product Name" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500" />
+                  <select value={form.category} onChange={(e) => setForm({...form, category: e.target.value})} className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500">
                     <option>Vegetables</option>
                     <option>Fruits</option>
                     <option>Grains</option>
                     <option>Dairy</option>
                   </select>
-                  <input
-                    placeholder="Price per KG (₹)"
-                    value={form.price_per_kg}
-                    onChange={(e) => setForm({...form, price_per_kg: e.target.value})}
-                    type="number"
-                    className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500"
-                  />
-                  <input
-                    placeholder="Available Quantity (KG)"
-                    value={form.quantity_kg}
-                    onChange={(e) => setForm({...form, quantity_kg: e.target.value})}
-                    type="number"
-                    className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500"
-                  />
-                  <input
-                    placeholder="Location (e.g. Nashik, Maharashtra)"
-                    value={form.location}
-                    onChange={(e) => setForm({...form, location: e.target.value})}
-                    className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500"
-                  />
-                  <input
-                    placeholder="Description"
-                    value={form.description}
-                    onChange={(e) => setForm({...form, description: e.target.value})}
-                    className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500"
-                  />
+                  <input placeholder="Price per KG (₹)" value={form.price_per_kg} onChange={(e) => setForm({...form, price_per_kg: e.target.value})} type="number" className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500" />
+                  <input placeholder="Available Quantity (KG)" value={form.quantity_kg} onChange={(e) => setForm({...form, quantity_kg: e.target.value})} type="number" className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500" />
+                  <input placeholder="Location (e.g. Nashik, Maharashtra)" value={form.location} onChange={(e) => setForm({...form, location: e.target.value})} className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500" />
+                  <input placeholder="Description" value={form.description} onChange={(e) => setForm({...form, description: e.target.value})} className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500" />
                 </div>
-                <button
-                  onClick={editProduct ? handleEdit : handleAdd}
-                  disabled={loading}
-                  className="mt-4 bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 font-bold w-full"
-                >
+                <button onClick={editProduct ? handleEdit : handleAdd} disabled={loading} className="mt-4 bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 font-bold w-full">
                   {loading ? 'Saving...' : editProduct ? '✅ Save Changes' : '✅ Add Product'}
                 </button>
               </div>
             )}
 
-            {/* Products List */}
             {products.length === 0 ? (
               <div className="text-center py-20 text-gray-400">
                 <p className="text-5xl mb-4">🌾</p>
@@ -247,17 +234,9 @@ function FarmerDashboard({ user, onBack }) {
                       </div>
                     </div>
                     <div className="flex gap-2 mt-3 flex-wrap items-center">
-                      <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-medium">
-                        ₹{p.price_per_kg}/kg
-                      </span>
-                      <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-medium">
-                        {p.quantity_kg} kg
-                      </span>
-                      {/* Toggle availability */}
-                      <button
-                        onClick={() => toggleAvailability(p)}
-                        className={`ml-auto px-3 py-1 rounded-full text-xs font-medium transition ${p.is_available ? 'bg-green-500 text-white' : 'bg-red-100 text-red-600'}`}
-                      >
+                      <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-medium">₹{p.price_per_kg}/kg</span>
+                      <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-medium">{p.quantity_kg} kg</span>
+                      <button onClick={() => toggleAvailability(p)} className={`ml-auto px-3 py-1 rounded-full text-xs font-medium transition ${p.is_available ? 'bg-green-500 text-white' : 'bg-red-100 text-red-600'}`}>
                         {p.is_available ? '✅ Available' : '❌ Hidden'}
                       </button>
                     </div>
@@ -268,7 +247,6 @@ function FarmerDashboard({ user, onBack }) {
           </>
         )}
 
-        {/* ===== ORDERS TAB ===== */}
         {activeTab === 'orders' && (
           <>
             <h2 className="text-xl font-bold text-green-800 mb-4">Incoming Orders</h2>
@@ -283,44 +261,17 @@ function FarmerDashboard({ user, onBack }) {
                   <div key={order.id} className="bg-white rounded-2xl shadow p-5">
                     <div className="flex justify-between items-start">
                       <div>
-                        <p className="font-bold text-gray-800">
-                          {getCategoryEmoji(order.products?.category)} {order.products?.name || 'Product'}
-                        </p>
-                        <p className="text-gray-500 text-sm mt-1">
-                          {order.quantity_kg} kg • ₹{order.total_price}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-1">
-                          {new Date(order.created_at).toLocaleDateString('en-IN', {
-                            day: 'numeric', month: 'short', year: 'numeric'
-                          })}
-                        </p>
+                        <p className="font-bold text-gray-800">{getCategoryEmoji(order.products?.category)} {order.products?.name || 'Product'}</p>
+                        <p className="text-gray-500 text-sm mt-1">{order.quantity_kg} kg • ₹{order.total_price}</p>
+                        <p className="text-xs text-gray-400 mt-1">{new Date(order.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                       </div>
                       <div className="flex flex-col items-end gap-2">
-                        <span className={`text-xs px-3 py-1 rounded-full font-medium capitalize ${getStatusColor(order.status)}`}>
-                          {order.status}
-                        </span>
-                        {/* Status update buttons */}
+                        <span className={`text-xs px-3 py-1 rounded-full font-medium capitalize ${getStatusColor(order.status)}`}>{order.status}</span>
                         {order.status === 'pending' && (
-                          <button
-                            onClick={async () => {
-                              await supabase.from('orders').update({ status: 'confirmed' }).eq('id', order.id)
-                              fetchOrders()
-                            }}
-                            className="text-xs bg-blue-500 text-white px-3 py-1 rounded-full hover:bg-blue-600"
-                          >
-                            Confirm Order
-                          </button>
+                          <button onClick={async () => { await supabase.from('orders').update({ status: 'confirmed' }).eq('id', order.id); fetchOrders() }} className="text-xs bg-blue-500 text-white px-3 py-1 rounded-full hover:bg-blue-600">Confirm Order</button>
                         )}
                         {order.status === 'confirmed' && (
-                          <button
-                            onClick={async () => {
-                              await supabase.from('orders').update({ status: 'delivered' }).eq('id', order.id)
-                              fetchOrders()
-                            }}
-                            className="text-xs bg-green-500 text-white px-3 py-1 rounded-full hover:bg-green-600"
-                          >
-                            Mark Delivered
-                          </button>
+                          <button onClick={async () => { await supabase.from('orders').update({ status: 'delivered' }).eq('id', order.id); fetchOrders() }} className="text-xs bg-green-500 text-white px-3 py-1 rounded-full hover:bg-green-600">Mark Delivered</button>
                         )}
                       </div>
                     </div>
@@ -329,6 +280,55 @@ function FarmerDashboard({ user, onBack }) {
               </div>
             )}
           </>
+        )}
+
+        {activeTab === 'advisory' && (
+          <div>
+            <h2 className="text-xl font-bold text-green-800 mb-4">🤖 AI Crop Advisory</h2>
+            <div className="bg-white rounded-2xl shadow p-6 mb-6">
+              <p className="text-gray-600 mb-4">Farmer location do — weather + crop advisory + 7-day forecast milega.</p>
+              <div className="grid grid-cols-1 gap-4 mb-4">
+                <input
+                  placeholder="📍 Location (e.g. Nashik, Maharashtra)"
+                  value={advisoryForm.location}
+                  onChange={(e) => setAdvisoryForm({...advisoryForm, location: e.target.value})}
+                  className="border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:border-green-500"
+                />
+              </div>
+              <button
+                onClick={getAdvisory}
+                disabled={advisoryLoading}
+                className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition"
+              >
+                {advisoryLoading ? '🤖 Fetching weather + advisory...' : '✨ Get Weather Advisory'}
+              </button>
+            </div>
+            {advisory && (
+              <div className="bg-green-50 border-2 border-green-200 rounded-2xl p-6">
+                <h3 className="font-bold text-green-800 mb-3">🌾 AI ki Salah:</h3>
+                {weatherSource && (
+                  <p className="text-xs text-gray-500 mb-2">Source: {weatherSource}</p>
+                )}
+                <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{advisory}</p>
+              </div>
+            )}
+            {forecast.length > 0 && (
+              <div className="bg-white rounded-2xl shadow p-6 mt-6">
+                <h3 className="font-bold text-green-800 mb-3">📅 7-Day Weather Forecast</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {forecast.map((day) => (
+                    <div key={day.date} className="border border-green-100 rounded-xl p-3">
+                      <p className="font-semibold text-gray-800">{new Date(day.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</p>
+                      <p className="text-sm text-gray-600">{day.condition} {day.predicted ? '(predicted)' : ''}</p>
+                      <p className="text-sm text-gray-700">🌡️ {day.temp_min_c}°C - {day.temp_max_c}°C</p>
+                      <p className="text-sm text-gray-700">💧 Humidity: {day.humidity}%</p>
+                      <p className="text-sm text-gray-700">🌧️ Rain: {day.rain_mm} mm</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
       </div>
