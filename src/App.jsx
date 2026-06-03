@@ -2,10 +2,16 @@ import { useState } from "react"
 import Auth from "./Auth"
 import FarmerDashboard from "./FarmerDashboard"
 import Marketplace from "./Marketplace"
+import AdminPanel from "./AdminPanel"
 
 function App() {
   const [user, setUser] = useState(null)
   const [page, setPage] = useState("home")
+  const adminEmails = (import.meta.env.VITE_ADMIN_EMAILS || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+  const isAdmin = user?.email && adminEmails.includes(user.email.toLowerCase())
 
   const handleLogin = (u) => {
     setUser(u)
@@ -27,6 +33,10 @@ function App() {
 
   if (page === "marketplace") {
     return <Marketplace user={user} onBack={() => setPage("home")} />
+  }
+
+  if (page === "admin" && user && isAdmin) {
+    return <AdminPanel user={user} onBack={() => setPage("home")} />
   }
 
   return (
@@ -58,6 +68,14 @@ function App() {
               >
                 👨‍🌾 Farmer Dashboard
               </button>
+              {isAdmin && (
+                <button
+                  onClick={() => setPage("admin")}
+                  className="bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-black text-sm font-medium"
+                >
+                  🛡️ Admin
+                </button>
+              )}
               <button
                 onClick={handleLogout}
                 className="text-gray-500 hover:text-red-500 text-sm"

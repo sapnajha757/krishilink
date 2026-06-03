@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabase'
+import ChatPanel from './ChatPanel'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000'
 
@@ -15,6 +16,7 @@ function FarmerDashboard({ user, onBack }) {
   const [forecast, setForecast] = useState([])
   const [advisoryLoading, setAdvisoryLoading] = useState(false)
   const [advisoryForm, setAdvisoryForm] = useState({ location: '', month: '' })
+  const [showChat, setShowChat] = useState(false)
   const [form, setForm] = useState({
     name: '', description: '', price_per_kg: '', quantity_kg: '', category: 'Vegetables', location: '', is_available: true
   })
@@ -124,6 +126,9 @@ function FarmerDashboard({ user, onBack }) {
     .reduce((sum, o) => sum + o.total_price, 0)
 
   const pendingOrders = orders.filter(o => o.status === 'pending').length
+  const chatContacts = [...new Set(orders.map((o) => o.consumer_id).filter(Boolean))]
+    .filter((id) => id !== user?.id)
+    .map((id) => ({ id, label: 'Buyer' }))
 
   const getCategoryEmoji = (cat) => {
     if (cat === 'Vegetables') return '🥬'
@@ -146,6 +151,7 @@ function FarmerDashboard({ user, onBack }) {
         <h1 className="text-2xl font-bold text-green-700">🌾 KrishiLink</h1>
         <div className="flex gap-4 items-center">
           <span className="text-green-700 font-medium hidden md:block">👨‍🌾 {user.email}</span>
+          <button onClick={() => setShowChat(true)} className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-lg text-sm font-medium hover:bg-emerald-200">💬 Messages</button>
           <button onClick={onBack} className="text-gray-500 hover:text-red-500 text-sm">Logout</button>
         </div>
       </nav>
@@ -332,6 +338,13 @@ function FarmerDashboard({ user, onBack }) {
         )}
 
       </div>
+      {showChat && (
+        <ChatPanel
+          user={user}
+          contacts={chatContacts}
+          onClose={() => setShowChat(false)}
+        />
+      )}
     </div>
   )
 }

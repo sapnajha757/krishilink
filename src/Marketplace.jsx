@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabase'
+import ChatPanel from './ChatPanel'
 
 function Marketplace({ user, onBack }) {
   const [products, setProducts] = useState([])
@@ -17,9 +18,16 @@ function Marketplace({ user, onBack }) {
   const [ordersLoading, setOrdersLoading] = useState(false)
   const [payments, setPayments] = useState([])
   const [paymentsLoading, setPaymentsLoading] = useState(false)
+  const [paymentDetailsByOrder, setPaymentDetailsByOrder] = useState({})
+  const [refreshingOrderId, setRefreshingOrderId] = useState('')
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [farmers, setFarmers] = useState({})
   const [checkoutLoading, setCheckoutLoading] = useState(false)
+  const [paymentMethod, setPaymentMethod] = useState('online')
+  const [showChat, setShowChat] = useState(false)
+  const [buyNowItem, setBuyNowItem] = useState(null)
+  const [buyNowPaymentMethod, setBuyNowPaymentMethod] = useState('online')
+  const [receipt, setReceipt] = useState(null)
 
   useEffect(() => { fetchProducts() }, [])
 
@@ -29,6 +37,19 @@ function Marketplace({ user, onBack }) {
     if (search) data = data.filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
     setFiltered(data)
   }, [search, category, products])
+
+  useEffect(() => {
+    if (!showPayments || payments.length === 0) return
+
+    const intervalId = setInterval(() => {
+      payments.forEach((payment) => {
+        const orderId = payment.order_id || payment.orderId
+        if (orderId) refreshPaymentStatus(orderId)
+      })
+    }, 15000)
+
+    return () => clearInterval(intervalId)
+  }, [showPayments, payments])
 
   const fetchProducts = async () => {
     const { data } = await supabase.from('products').select('*').eq('is_available', true)
@@ -84,6 +105,29 @@ function Marketplace({ user, onBack }) {
     setPaymentsLoading(false)
   }
 
+  const refreshPaymentStatus = async (orderId) => {
+    if (!orderId) return
+    setRefreshingOrderId(orderId)
+    try {
+      const response = await fetch(`http://localhost:4000/api/payments/status/${encodeURIComponent(orderId)}`)
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to fetch payment status')
+      }
+
+      setPaymentDetailsByOrder(prev => ({
+        ...prev,
+        [orderId]: data,
+      }))
+    } catch (error) {
+      setPaymentDetailsByOrder(prev => ({
+        ...prev,
+        [orderId]: { error: error.message },
+      }))
+    }
+    setRefreshingOrderId('')
+  }
+
   const handleQuantityChange = (productId, value) => {
     setQuantities(prev => ({
       ...prev,
@@ -91,22 +135,29 @@ function Marketplace({ user, onBack }) {
     }))
   }
 
-  const handleOrder = async (product) => {
-    if (!user) { alert('Please login to order!'); return }
-    const qty = quantities[product.id] || 1
-    const { error } = await supabase.from('orders').insert({
+  const placeSingleOrder = async ({ product, qty, method }) => {
+    const nextStatus = method === 'cod' ? 'confirmed' : 'pending'
+    const { data, error } = await supabase.from('orders').insert({
       consumer_id: user.id,
       farmer_id: product.farmer_id,
       product_id: product.id,
       quantity_kg: qty,
       total_price: product.price_per_kg * qty,
-      status: 'pending'
+      status: nextStatus
+    }).select('id, quantity_kg, total_price, status, created_at').single()
+    if (error) throw new Error(error.message || 'Failed to place order')
+    return data
+  }
+
+  const openBuyNowCheckout = (product) => {
+    if (!user) { alert('Please login to order!'); return }
+    const qty = quantities[product.id] || 1
+    setBuyNowItem({
+      ...product,
+      qty,
+      amount: product.price_per_kg * qty,
     })
-    if (!error) {
-      setOrdered(product.name)
-      setSelectedProduct(null)
-      setTimeout(() => setOrdered(null), 3000)
-    }
+    setBuyNowPaymentMethod('online')
   }
 
   const addToCart = (product) => {
@@ -131,19 +182,31 @@ function Marketplace({ user, onBack }) {
   }
 
   const cartTotal = cart.reduce((sum, item) => sum + item.price_per_kg * item.cartQty, 0)
+  const chatContacts = [...new Set(products.map((p) => p.farmer_id).filter(Boolean))]
+    .filter((id) => id !== user?.id)
+    .map((id) => ({ id, label: farmers[id] || 'Farmer' }))
 
-  const placeCartOrders = async () => {
+  const placeCartOrders = async (method = 'online') => {
     if (!user) { alert('Please login to place orders!'); return }
+    const nextStatus = method === 'cod' ? 'confirmed' : 'pending'
     const inserts = cart.map(item => ({
       consumer_id: user.id,
       farmer_id: item.farmer_id,
       product_id: item.id,
       quantity_kg: item.cartQty,
       total_price: item.price_per_kg * item.cartQty,
-      status: 'pending'
+      status: nextStatus
     }))
-    const { error } = await supabase.from('orders').insert(inserts)
+    const { data, error } = await supabase.from('orders').insert(inserts).select('id, quantity_kg, total_price, status, created_at')
     if (!error) {
+      setReceipt({
+        type: 'cart',
+        orderCount: data?.length || inserts.length,
+        paymentMethod: method,
+        totalAmount: cartTotal,
+        createdAt: new Date().toISOString(),
+        firstOrderId: data?.[0]?.id || null,
+      })
       setCart([])
       setShowCart(false)
       setOrdered('All orders placed successfully!')
@@ -165,6 +228,18 @@ function Marketplace({ user, onBack }) {
   const handleCheckout = async () => {
     if (!user) { alert('Please login to checkout!'); return }
     if (cart.length === 0) { alert('Cart is empty!'); return }
+
+    if (paymentMethod === 'cod') {
+      setCheckoutLoading(true)
+      try {
+        await placeCartOrders('cod')
+        setOrdered('COD selected • Orders placed successfully!')
+        setTimeout(() => setOrdered(null), 4000)
+      } finally {
+        setCheckoutLoading(false)
+      }
+      return
+    }
 
     setCheckoutLoading(true)
     try {
@@ -215,7 +290,7 @@ function Marketplace({ user, onBack }) {
               throw new Error(verifyData?.error || 'Payment verification failed')
             }
 
-            await placeCartOrders()
+            await placeCartOrders('online')
             setOrdered(`Payment ${verifyData.paymentStatus || 'successful'} • Orders placed!`)
             setTimeout(() => setOrdered(null), 4000)
           } catch (error) {
@@ -236,6 +311,108 @@ function Marketplace({ user, onBack }) {
     } catch (error) {
       setOrdered(`Checkout error: ${error.message}`)
       setTimeout(() => setOrdered(null), 4000)
+    } finally {
+      setCheckoutLoading(false)
+    }
+  }
+
+  const handleBuyNowCheckout = async () => {
+    if (!buyNowItem || !user) return
+    setCheckoutLoading(true)
+    try {
+      if (buyNowPaymentMethod === 'cod') {
+        const createdOrder = await placeSingleOrder({ product: buyNowItem, qty: buyNowItem.qty, method: 'cod' })
+        setReceipt({
+          type: 'single',
+          orderId: createdOrder?.id,
+          productName: buyNowItem.name,
+          quantity: buyNowItem.qty,
+          totalAmount: buyNowItem.amount,
+          paymentMethod: 'cod',
+          status: createdOrder?.status || 'confirmed',
+          createdAt: createdOrder?.created_at || new Date().toISOString(),
+        })
+        setOrdered(`Order placed for ${buyNowItem.name} (COD)`)
+        setBuyNowItem(null)
+        setSelectedProduct(null)
+        setTimeout(() => setOrdered(null), 3500)
+        return
+      }
+
+      const scriptLoaded = await loadRazorpayScript()
+      if (!scriptLoaded) throw new Error('Razorpay SDK load failed')
+
+      const checkoutRes = await fetch('http://localhost:4000/api/payments/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          consumerId: user.id,
+          items: [{
+            id: buyNowItem.id,
+            name: buyNowItem.name,
+            farmer_id: buyNowItem.farmer_id,
+            quantity_kg: buyNowItem.qty,
+            price_per_kg: buyNowItem.price_per_kg,
+          }],
+        }),
+      })
+      const checkoutData = await checkoutRes.json()
+      if (!checkoutRes.ok) throw new Error(checkoutData?.error || 'Checkout init failed')
+
+      const options = {
+        key: checkoutData.keyId,
+        amount: checkoutData.amount,
+        currency: checkoutData.currency,
+        name: 'KrishiLink',
+        description: `Order: ${buyNowItem.name}`,
+        order_id: checkoutData.orderId,
+        prefill: { email: user.email || '' },
+        theme: { color: '#15803d' },
+        handler: async (response) => {
+          try {
+            const verifyRes = await fetch('http://localhost:4000/api/payments/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(response),
+            })
+            const verifyData = await verifyRes.json()
+            if (!verifyRes.ok || !verifyData.verified) {
+              throw new Error(verifyData?.error || 'Payment verification failed')
+            }
+
+            const createdOrder = await placeSingleOrder({ product: buyNowItem, qty: buyNowItem.qty, method: 'online' })
+            setReceipt({
+              type: 'single',
+              orderId: createdOrder?.id,
+              productName: buyNowItem.name,
+              quantity: buyNowItem.qty,
+              totalAmount: buyNowItem.amount,
+              paymentMethod: 'online',
+              status: createdOrder?.status || 'pending',
+              createdAt: createdOrder?.created_at || new Date().toISOString(),
+            })
+            setOrdered(`Payment ${verifyData.paymentStatus || 'successful'} • Order placed!`)
+            setBuyNowItem(null)
+            setSelectedProduct(null)
+            setTimeout(() => setOrdered(null), 4000)
+          } catch (error) {
+            setOrdered(`Payment failed: ${error.message}`)
+            setTimeout(() => setOrdered(null), 4000)
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            setOrdered('Payment cancelled.')
+            setTimeout(() => setOrdered(null), 2000)
+          },
+        },
+      }
+
+      const rzp = new window.Razorpay(options)
+      rzp.open()
+    } catch (error) {
+      setOrdered(`Checkout error: ${error.message}`)
+      setTimeout(() => setOrdered(null), 3500)
     } finally {
       setCheckoutLoading(false)
     }
@@ -289,6 +466,15 @@ function Marketplace({ user, onBack }) {
             className="bg-blue-50 text-blue-700 px-4 py-2 rounded-xl font-medium hover:bg-blue-100 transition"
           >
             📦 My Orders
+          </button>
+          <button
+            onClick={() => {
+              if (!user) { alert('Please login to chat!'); return }
+              setShowChat(true)
+            }}
+            className="bg-emerald-50 text-emerald-700 px-4 py-2 rounded-xl font-medium hover:bg-emerald-100 transition"
+          >
+            💬 Messages
           </button>
           <button
             onClick={() => {
@@ -407,7 +593,7 @@ function Marketplace({ user, onBack }) {
                     🛒 Add to Cart
                   </button>
                   <button
-                    onClick={() => handleOrder(p)}
+                    onClick={() => openBuyNowCheckout(p)}
                     className="flex-1 bg-green-600 text-white py-2 rounded-xl font-medium hover:bg-green-700 transition text-sm"
                   >
                     ⚡ Buy Now
@@ -462,12 +648,33 @@ function Marketplace({ user, onBack }) {
                     <span className="text-gray-600 font-medium">Total Amount</span>
                     <span className="text-2xl font-bold text-green-700">₹{cartTotal.toFixed(0)}</span>
                   </div>
+                  <div className="mb-4">
+                    <p className="text-sm font-medium text-gray-700 mb-2">Select Payment Method</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setPaymentMethod('online')}
+                        className={`px-3 py-2 rounded-lg text-sm font-medium border ${paymentMethod === 'online' ? 'bg-green-100 border-green-500 text-green-700' : 'bg-white border-gray-300 text-gray-600'}`}
+                      >
+                        💳 Online Payment
+                      </button>
+                      <button
+                        onClick={() => setPaymentMethod('cod')}
+                        className={`px-3 py-2 rounded-lg text-sm font-medium border ${paymentMethod === 'cod' ? 'bg-yellow-100 border-yellow-500 text-yellow-700' : 'bg-white border-gray-300 text-gray-600'}`}
+                      >
+                        💵 Cash on Delivery
+                      </button>
+                    </div>
+                  </div>
                   <button
                     onClick={handleCheckout}
                     disabled={checkoutLoading}
                     className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition disabled:opacity-70"
                   >
-                    {checkoutLoading ? 'Processing payment...' : '💳 Pay with Razorpay'}
+                    {checkoutLoading
+                      ? 'Processing payment...'
+                      : paymentMethod === 'cod'
+                        ? '✅ Place Order (COD)'
+                        : '💳 Pay with Razorpay'}
                   </button>
                 </div>
               </>
@@ -551,10 +758,15 @@ function Marketplace({ user, onBack }) {
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
                 {payments.map(payment => (
                   <div key={payment.order_id || payment.orderId} className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                    {(() => {
+                      const orderId = payment.order_id || payment.orderId
+                      const details = paymentDetailsByOrder[orderId]
+                      return (
+                        <>
                     <div className="flex justify-between items-start gap-3">
                       <div>
                         <p className="font-semibold text-gray-800 text-sm break-all">
-                          Order: {payment.order_id || payment.orderId}
+                          Order: {orderId}
                         </p>
                         <p className="text-sm text-gray-500 mt-1">
                           Amount: ₹{payment.amount || 0} {payment.currency || 'INR'}
@@ -570,6 +782,37 @@ function Marketplace({ user, onBack }) {
                         {payment.checkout_status || 'unknown'}
                       </span>
                     </div>
+                    <div className="mt-3">
+                      <button
+                        onClick={() => refreshPaymentStatus(orderId)}
+                        disabled={refreshingOrderId === orderId}
+                        className="text-xs bg-purple-600 text-white px-3 py-1 rounded-lg hover:bg-purple-700 disabled:opacity-70"
+                      >
+                        {refreshingOrderId === orderId ? 'Refreshing...' : 'View payment details'}
+                      </button>
+                    </div>
+                    {details && (
+                      <div className="mt-3 bg-white border border-purple-100 rounded-lg p-3">
+                        {details.error ? (
+                          <p className="text-xs text-red-600">Error: {details.error}</p>
+                        ) : (
+                          <>
+                            <p className="text-xs text-gray-700">Live status: <span className="font-semibold capitalize">{details.checkout_status || 'unknown'}</span></p>
+                            <p className="text-xs text-gray-700 mt-1">Verified: {details.verified === true ? 'Yes' : details.verified === false ? 'No' : 'N/A'}</p>
+                            {details.payment_id && (
+                              <p className="text-xs text-gray-700 mt-1 break-all">Payment ID: {details.payment_id}</p>
+                            )}
+                            {details.method && (
+                              <p className="text-xs text-gray-700 mt-1">Method: {details.method}</p>
+                            )}
+                            <p className="text-xs text-gray-500 mt-1">Source: {details.source || 'live'}</p>
+                          </>
+                        )}
+                      </div>
+                    )}
+                        </>
+                      )
+                    })()}
                   </div>
                 ))}
               </div>
@@ -633,12 +876,99 @@ function Marketplace({ user, onBack }) {
                 🛒 Add to Cart
               </button>
               <button
-                onClick={() => handleOrder(selectedProduct)}
+                onClick={() => openBuyNowCheckout(selectedProduct)}
                 className="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition"
               >
                 ⚡ Buy Now
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showChat && (
+        <ChatPanel
+          user={user}
+          contacts={chatContacts}
+          onClose={() => setShowChat(false)}
+        />
+      )}
+
+      {buyNowItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setBuyNowItem(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 z-10">
+            <h3 className="text-xl font-bold text-green-800">Place Order</h3>
+            <p className="text-sm text-gray-600 mt-1">{buyNowItem.name} • {buyNowItem.qty} kg</p>
+            <p className="text-lg font-bold text-green-700 mt-3">Total: ₹{buyNowItem.amount.toFixed(0)}</p>
+
+            <div className="mt-4">
+              <p className="text-sm font-medium text-gray-700 mb-2">Select Payment Method</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setBuyNowPaymentMethod('online')}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium border ${buyNowPaymentMethod === 'online' ? 'bg-green-100 border-green-500 text-green-700' : 'bg-white border-gray-300 text-gray-600'}`}
+                >
+                  💳 Online
+                </button>
+                <button
+                  onClick={() => setBuyNowPaymentMethod('cod')}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium border ${buyNowPaymentMethod === 'cod' ? 'bg-yellow-100 border-yellow-500 text-yellow-700' : 'bg-white border-gray-300 text-gray-600'}`}
+                >
+                  💵 COD
+                </button>
+              </div>
+            </div>
+
+            <div className="flex gap-2 mt-6">
+              <button
+                onClick={() => setBuyNowItem(null)}
+                className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBuyNowCheckout}
+                disabled={checkoutLoading}
+                className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 disabled:opacity-70"
+              >
+                {checkoutLoading ? 'Processing...' : buyNowPaymentMethod === 'cod' ? 'Place COD Order' : 'Pay & Place'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {receipt && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setReceipt(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 z-10">
+            <h3 className="text-xl font-bold text-green-800">✅ Order Receipt</h3>
+            <div className="mt-4 space-y-2 text-sm text-gray-700">
+              <p><span className="font-semibold">Payment:</span> {receipt.paymentMethod === 'cod' ? 'Cash on Delivery' : 'Online Payment'}</p>
+              {receipt.type === 'single' ? (
+                <>
+                  <p><span className="font-semibold">Order ID:</span> {receipt.orderId || 'N/A'}</p>
+                  <p><span className="font-semibold">Product:</span> {receipt.productName}</p>
+                  <p><span className="font-semibold">Quantity:</span> {receipt.quantity} kg</p>
+                  <p><span className="font-semibold">Amount:</span> ₹{Number(receipt.totalAmount || 0).toFixed(0)}</p>
+                  <p><span className="font-semibold">Status:</span> {receipt.status}</p>
+                </>
+              ) : (
+                <>
+                  <p><span className="font-semibold">Orders placed:</span> {receipt.orderCount}</p>
+                  {receipt.firstOrderId && <p><span className="font-semibold">First Order ID:</span> {receipt.firstOrderId}</p>}
+                  <p><span className="font-semibold">Total Amount:</span> ₹{Number(receipt.totalAmount || 0).toFixed(0)}</p>
+                </>
+              )}
+              <p><span className="font-semibold">Date:</span> {new Date(receipt.createdAt || Date.now()).toLocaleString('en-IN')}</p>
+            </div>
+            <button
+              onClick={() => setReceipt(null)}
+              className="mt-6 w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
