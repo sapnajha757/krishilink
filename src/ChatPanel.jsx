@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
+import { useLanguage } from './i18n/LanguageContext'
 
 function ChatPanel({ user, contacts = [], onClose }) {
+  const { t } = useLanguage()
   const [messagesByPeer, setMessagesByPeer] = useState({})
   const [activePeerId, setActivePeerId] = useState(contacts[0]?.id || '')
   const [draft, setDraft] = useState('')
@@ -152,10 +154,10 @@ function ChatPanel({ user, contacts = [], onClose }) {
       <div className="flex-1 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="w-full max-w-4xl bg-white h-full shadow-2xl flex overflow-hidden">
         <div className="w-80 border-r border-gray-200 flex flex-col">
-          <div className="px-4 py-3 bg-green-700 text-white font-bold">💬 Messages</div>
+          <div className="px-4 py-3 bg-green-700 text-white font-bold">💬 {t('messages')}</div>
           <div className="overflow-y-auto flex-1">
             {mergedContacts.length === 0 ? (
-              <p className="text-sm text-gray-500 p-4">No chats yet.</p>
+              <p className="text-sm text-gray-500 p-4">{t('noChats')}</p>
             ) : mergedContacts.map((c) => (
               <button
                 key={c.id}
@@ -173,15 +175,15 @@ function ChatPanel({ user, contacts = [], onClose }) {
 
         <div className="flex-1 flex flex-col">
           <div className="px-4 py-3 border-b flex justify-between items-center">
-            <p className="font-semibold text-gray-800">{profiles[activePeerId] || activePeerId || 'Select a chat'}</p>
+            <p className="font-semibold text-gray-800">{profiles[activePeerId] || activePeerId || t('selectChat')}</p>
             <button onClick={onClose} className="text-gray-500 text-2xl">×</button>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-green-50">
             {loading ? (
-              <p className="text-sm text-gray-500">Loading messages...</p>
+              <p className="text-sm text-gray-500">{t('loadingMessages')}</p>
             ) : activeMessages.length === 0 ? (
-              <p className="text-sm text-gray-500">No messages yet. Start conversation.</p>
+              <p className="text-sm text-gray-500">{t('noMessages')}</p>
             ) : activeMessages.map((m) => (
               <div key={m.id} className={`max-w-[75%] px-3 py-2 rounded-xl ${m.sender_id === user.id ? 'ml-auto bg-green-600 text-white' : 'bg-white border text-gray-800'}`}>
                 <p className="text-sm whitespace-pre-wrap">{m.content || m.message || ''}</p>
@@ -197,7 +199,7 @@ function ChatPanel({ user, contacts = [], onClose }) {
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') sendMessage() }}
-              placeholder="Type a message..."
+              placeholder={t('typeMessage')}
               className="flex-1 border border-gray-300 rounded-lg px-3 py-2"
             />
             <button
@@ -205,7 +207,7 @@ function ChatPanel({ user, contacts = [], onClose }) {
               disabled={sending || !activePeerId}
               className="bg-green-600 text-white px-4 rounded-lg disabled:opacity-60"
             >
-              {sending ? 'Sending...' : 'Send'}
+              {sending ? t('sending') : t('send')}
             </button>
           </div>
         </div>

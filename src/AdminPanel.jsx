@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
+import LanguageSelector from './components/LanguageSelector'
+import { useLanguage } from './i18n/LanguageContext'
 
 function AdminPanel({ user, onBack }) {
+  const { t } = useLanguage()
   const [users, setUsers] = useState([])
   const [orders, setOrders] = useState([])
   const [products, setProducts] = useState([])
@@ -71,41 +74,39 @@ function AdminPanel({ user, onBack }) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow px-6 py-4 flex justify-between items-center">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">🛡️ Admin Panel</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{t('adminPanel')}</h1>
           <p className="text-sm text-gray-500">{user?.email}</p>
         </div>
-        <div className="flex gap-3">
-          <button onClick={fetchAll} className="bg-gray-100 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-200">Refresh</button>
-          <button onClick={onBack} className="text-gray-600 hover:text-red-600 text-sm">← Back</button>
+        <div className="flex gap-2 items-center">
+          <LanguageSelector />
+          <button onClick={fetchAll} className="bg-gray-100 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-200">{t('refresh')}</button>
         </div>
-      </nav>
-
-      <div className="max-w-7xl mx-auto px-6 py-6">
+      </div>
         {error && <div className="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">{error}</div>}
 
         <div className="flex gap-2 mb-6 flex-wrap">
-          <button onClick={() => setTab('analytics')} className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === 'analytics' ? 'bg-gray-900 text-white' : 'bg-white border'}`}>Analytics</button>
-          <button onClick={() => setTab('users')} className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === 'users' ? 'bg-gray-900 text-white' : 'bg-white border'}`}>Users</button>
-          <button onClick={() => setTab('orders')} className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === 'orders' ? 'bg-gray-900 text-white' : 'bg-white border'}`}>All Orders</button>
+          <button onClick={() => setTab('analytics')} className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === 'analytics' ? 'bg-gray-900 text-white' : 'bg-white border'}`}>{t('analytics')}</button>
+          <button onClick={() => setTab('users')} className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === 'users' ? 'bg-gray-900 text-white' : 'bg-white border'}`}>{t('users')}</button>
+          <button onClick={() => setTab('orders')} className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === 'orders' ? 'bg-gray-900 text-white' : 'bg-white border'}`}>{t('allOrders')}</button>
         </div>
 
         {loading ? (
-          <div className="text-gray-500">Loading admin data...</div>
+          <div className="text-gray-500">{t('loadingAdmin')}</div>
         ) : (
           <>
             {tab === 'analytics' && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Stat title="Total Users" value={analytics.totalUsers} />
-                <Stat title="Farmers" value={analytics.totalFarmers} />
-                <Stat title="Consumers" value={analytics.totalConsumers} />
-                <Stat title="Total Products" value={analytics.totalProducts} />
-                <Stat title="Total Orders" value={analytics.totalOrders} />
-                <Stat title="Pending Orders" value={analytics.pendingOrders} />
-                <Stat title="Delivered Revenue" value={`₹${analytics.deliveredRevenue}`} />
-                <Stat title="Flagged / Suspended" value={`${analytics.flaggedUsers} / ${analytics.suspendedUsers}`} />
+                <Stat title={t('totalUsers')} value={analytics.totalUsers} />
+                <Stat title={t('farmers')} value={analytics.totalFarmers} />
+                <Stat title={t('consumers')} value={analytics.totalConsumers} />
+                <Stat title={t('totalProducts')} value={analytics.totalProducts} />
+                <Stat title={t('allOrders')} value={analytics.totalOrders} />
+                <Stat title={t('pendingOrders')} value={analytics.pendingOrders} />
+                <Stat title={t('deliveredRevenue')} value={`₹${analytics.deliveredRevenue}`} />
+                <Stat title={t('flaggedSuspended')} value={`${analytics.flaggedUsers} / ${analytics.suspendedUsers}`} />
               </div>
             )}
 
@@ -114,11 +115,11 @@ function AdminPanel({ user, onBack }) {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-100 text-gray-700">
                     <tr>
-                      <th className="text-left px-4 py-3">Name</th>
-                      <th className="text-left px-4 py-3">Role</th>
-                      <th className="text-left px-4 py-3">Flagged</th>
-                      <th className="text-left px-4 py-3">Suspended</th>
-                      <th className="text-left px-4 py-3">Actions</th>
+                      <th className="text-left px-4 py-3">{t('name')}</th>
+                      <th className="text-left px-4 py-3">{t('role')}</th>
+                      <th className="text-left px-4 py-3">{t('flaggedCol')}</th>
+                      <th className="text-left px-4 py-3">{t('suspendedCol')}</th>
+                      <th className="text-left px-4 py-3">{t('actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -129,22 +130,22 @@ function AdminPanel({ user, onBack }) {
                           <p className="text-xs text-gray-500">{u.id}</p>
                         </td>
                         <td className="px-4 py-3 capitalize">{u.role || 'user'}</td>
-                        <td className="px-4 py-3">{u.is_flagged ? 'Yes' : 'No'}</td>
-                        <td className="px-4 py-3">{u.is_suspended ? 'Yes' : 'No'}</td>
+                        <td className="px-4 py-3">{u.is_flagged ? t('yes') : t('no')}</td>
+                        <td className="px-4 py-3">{u.is_suspended ? t('yes') : t('no')}</td>
                         <td className="px-4 py-3 flex gap-2">
                           <button
                             onClick={() => toggleUserFlagOrSuspend(u, 'is_flagged')}
                             disabled={actionLoadingUserId === u.id}
                             className="text-xs bg-yellow-100 text-yellow-800 px-3 py-1 rounded hover:bg-yellow-200 disabled:opacity-70"
                           >
-                            {u.is_flagged ? 'Unflag' : 'Flag'}
+                            {u.is_flagged ? t('unflag') : t('flag')}
                           </button>
                           <button
                             onClick={() => toggleUserFlagOrSuspend(u, 'is_suspended')}
                             disabled={actionLoadingUserId === u.id}
                             className="text-xs bg-red-100 text-red-700 px-3 py-1 rounded hover:bg-red-200 disabled:opacity-70"
                           >
-                            {u.is_suspended ? 'Unsuspend' : 'Suspend'}
+                            {u.is_suspended ? t('unsuspend') : t('suspend')}
                           </button>
                         </td>
                       </tr>
@@ -159,12 +160,12 @@ function AdminPanel({ user, onBack }) {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-100 text-gray-700">
                     <tr>
-                      <th className="text-left px-4 py-3">Order</th>
-                      <th className="text-left px-4 py-3">Product</th>
-                      <th className="text-left px-4 py-3">Qty</th>
-                      <th className="text-left px-4 py-3">Amount</th>
-                      <th className="text-left px-4 py-3">Status</th>
-                      <th className="text-left px-4 py-3">Date</th>
+                      <th className="text-left px-4 py-3">{t('order')}</th>
+                      <th className="text-left px-4 py-3">{t('productCol')}</th>
+                      <th className="text-left px-4 py-3">{t('qty')}</th>
+                      <th className="text-left px-4 py-3">{t('amountLabel')}</th>
+                      <th className="text-left px-4 py-3">{t('status')}</th>
+                      <th className="text-left px-4 py-3">{t('date')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -184,7 +185,6 @@ function AdminPanel({ user, onBack }) {
             )}
           </>
         )}
-      </div>
     </div>
   )
 }

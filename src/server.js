@@ -93,7 +93,7 @@ const buildLocalAdvisory = ({ location, month }) => {
     `Month: ${month}`,
     `Season fit: ${season}`,
     `Suggested crops: ${cropMap[season].join(', ')}`,
-    'Tip: Local mandi rates aur soil type ke basis par final decision lo.',
+    'Tip: Check local market rates and soil type before making your final decision.',
   ].join('\n')
 }
 
@@ -109,11 +109,11 @@ Give practical crop suggestions for:
 - Location: ${location}
 - Month: ${month}
 
-Respond in simple Hinglish with:
+Respond in simple English with:
 1) Best 3 crops
-2) Why suitable now
+2) Why they are suitable now
 3) One risk and how to reduce it
-4) 2 practical next steps`
+4) Two practical next steps`
 
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -189,7 +189,7 @@ const buildWeatherAdvisory = ({ location, forecast }) => {
     `Next 7-day avg temp: ${avgTemp.toFixed(1)} C`,
     `Next 7-day avg rain: ${avgRain.toFixed(1)} mm/day`,
     `Best crop options: ${crops.join(', ')}`,
-    'Action: Soil moisture monitor karo, aur irrigation/rainfall ke hisaab se sowing plan banao.',
+    'Action: Monitor soil moisture and plan sowing based on irrigation and expected rainfall.',
   ].join('\n')
 }
 

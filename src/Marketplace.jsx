@@ -1,8 +1,14 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabase'
 import ChatPanel from './ChatPanel'
+import Loading from './Loading'
+import LanguageSelector from './components/LanguageSelector'
+import { useLanguage } from './i18n/LanguageContext'
 
-function Marketplace({ user, onBack }) {
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000'
+
+function Marketplace({ user }) {
+  const { t } = useLanguage()
   const [products, setProducts] = useState([])
   const [filtered, setFiltered] = useState([])
   const [search, setSearch] = useState('')
@@ -66,11 +72,11 @@ function Marketplace({ user, onBack }) {
     if (farmerIds.length === 0) return
     const { data } = await supabase
       .from('profiles')
-      .select('id, full_name')
+      .select('id, full_name, avatar_url')
       .in('id', farmerIds)
     if (data) {
       const map = {}
-      data.forEach(f => { map[f.id] = f.full_name })
+      data.forEach(f => { map[f.id] = { name: f.full_name, avatar_url: f.avatar_url } })
       setFarmers(map)
     }
   }
@@ -92,7 +98,7 @@ function Marketplace({ user, onBack }) {
     if (!user) { setPaymentsLoading(false); return }
     setPaymentsLoading(true)
     try {
-      const response = await fetch(`http://localhost:4000/api/payments?consumerId=${encodeURIComponent(user.id)}`)
+      const response = await fetch(`${API_BASE_URL}/api/payments?consumerId=${encodeURIComponent(user.id)}`)
       const data = await response.json()
       if (response.ok) {
         setPayments(data.payments || [])
@@ -109,7 +115,7 @@ function Marketplace({ user, onBack }) {
     if (!orderId) return
     setRefreshingOrderId(orderId)
     try {
-      const response = await fetch(`http://localhost:4000/api/payments/status/${encodeURIComponent(orderId)}`)
+      const response = await fetch(`${API_BASE_URL}/api/payments/status/${encodeURIComponent(orderId)}`)
       const data = await response.json()
       if (!response.ok) {
         throw new Error(data?.error || 'Failed to fetch payment status')
@@ -150,7 +156,7 @@ function Marketplace({ user, onBack }) {
   }
 
   const openBuyNowCheckout = (product) => {
-    if (!user) { alert('Please login to order!'); return }
+    if (!user) { alert(t('loginToOrder')); return }
     const qty = quantities[product.id] || 1
     setBuyNowItem({
       ...product,
@@ -173,7 +179,7 @@ function Marketplace({ user, onBack }) {
       }
       return [...prev, { ...product, cartQty: qty }]
     })
-    setOrdered(`${product.name} added to cart!`)
+    setOrdered(t('addedToCart', { name: product.name }))
     setTimeout(() => setOrdered(null), 2000)
   }
 
@@ -184,10 +190,25 @@ function Marketplace({ user, onBack }) {
   const cartTotal = cart.reduce((sum, item) => sum + item.price_per_kg * item.cartQty, 0)
   const chatContacts = [...new Set(products.map((p) => p.farmer_id).filter(Boolean))]
     .filter((id) => id !== user?.id)
-    .map((id) => ({ id, label: farmers[id] || 'Farmer' }))
+    .map((id) => ({ id, label: farmers[id]?.name || 'Farmer' }))
+
+  const FarmerBadge = ({ farmerId }) => {
+    const farmer = farmers[farmerId]
+    if (!farmer?.name) return null
+    return (
+      <div className="flex items-center gap-2 mt-1">
+        {farmer.avatar_url ? (
+          <img src={farmer.avatar_url} alt={farmer.name} className="w-6 h-6 rounded-full object-cover" />
+        ) : (
+          <span className="text-sm">👨‍🌾</span>
+        )}
+        <p className="text-green-600 text-sm">{farmer.name}</p>
+      </div>
+    )
+  }
 
   const placeCartOrders = async (method = 'online') => {
-    if (!user) { alert('Please login to place orders!'); return }
+    if (!user) { alert(t('loginToPlaceOrders')); return }
     const nextStatus = method === 'cod' ? 'confirmed' : 'pending'
     const inserts = cart.map(item => ({
       consumer_id: user.id,
@@ -209,7 +230,7 @@ function Marketplace({ user, onBack }) {
       })
       setCart([])
       setShowCart(false)
-      setOrdered('All orders placed successfully!')
+      setOrdered(t('ordersPlacedSuccess'))
       setTimeout(() => setOrdered(null), 3000)
     }
   }
@@ -226,14 +247,14 @@ function Marketplace({ user, onBack }) {
   }
 
   const handleCheckout = async () => {
-    if (!user) { alert('Please login to checkout!'); return }
-    if (cart.length === 0) { alert('Cart is empty!'); return }
+    if (!user) { alert(t('loginToCheckout')); return }
+    if (cart.length === 0) { alert(t('cartEmptyAlert')); return }
 
     if (paymentMethod === 'cod') {
       setCheckoutLoading(true)
       try {
         await placeCartOrders('cod')
-        setOrdered('COD selected • Orders placed successfully!')
+        setOrdered(t('ordersPlacedSuccess'))
         setTimeout(() => setOrdered(null), 4000)
       } finally {
         setCheckoutLoading(false)
@@ -257,7 +278,7 @@ function Marketplace({ user, onBack }) {
         })),
       }
 
-      const checkoutRes = await fetch('http://localhost:4000/api/payments/checkout', {
+      const checkoutRes = await fetch(`${API_BASE_URL}/api/payments/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(checkoutPayload),
@@ -280,7 +301,7 @@ function Marketplace({ user, onBack }) {
         },
         handler: async (response) => {
           try {
-            const verifyRes = await fetch('http://localhost:4000/api/payments/verify', {
+            const verifyRes = await fetch(`${API_BASE_URL}/api/payments/verify`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(response),
@@ -300,7 +321,7 @@ function Marketplace({ user, onBack }) {
         },
         modal: {
           ondismiss: () => {
-            setOrdered('Payment cancelled.')
+            setOrdered(t('paymentCancelled'))
             setTimeout(() => setOrdered(null), 2000)
           },
         },
@@ -332,7 +353,7 @@ function Marketplace({ user, onBack }) {
           status: createdOrder?.status || 'confirmed',
           createdAt: createdOrder?.created_at || new Date().toISOString(),
         })
-        setOrdered(`Order placed for ${buyNowItem.name} (COD)`)
+        setOrdered(t('orderPlacedCod', { name: buyNowItem.name }))
         setBuyNowItem(null)
         setSelectedProduct(null)
         setTimeout(() => setOrdered(null), 3500)
@@ -342,7 +363,7 @@ function Marketplace({ user, onBack }) {
       const scriptLoaded = await loadRazorpayScript()
       if (!scriptLoaded) throw new Error('Razorpay SDK load failed')
 
-      const checkoutRes = await fetch('http://localhost:4000/api/payments/checkout', {
+      const checkoutRes = await fetch(`${API_BASE_URL}/api/payments/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -370,7 +391,7 @@ function Marketplace({ user, onBack }) {
         theme: { color: '#15803d' },
         handler: async (response) => {
           try {
-            const verifyRes = await fetch('http://localhost:4000/api/payments/verify', {
+            const verifyRes = await fetch(`${API_BASE_URL}/api/payments/verify`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(response),
@@ -402,7 +423,7 @@ function Marketplace({ user, onBack }) {
         },
         modal: {
           ondismiss: () => {
-            setOrdered('Payment cancelled.')
+            setOrdered(t('paymentCancelled'))
             setTimeout(() => setOrdered(null), 2000)
           },
         },
@@ -433,67 +454,65 @@ function Marketplace({ user, onBack }) {
     return 'bg-gray-100 text-gray-600'
   }
 
+  const categoryKeys = {
+    All: 'all',
+    Vegetables: 'vegetables',
+    Fruits: 'fruits',
+    Grains: 'grains',
+    Dairy: 'dairy',
+  }
+
   return (
-    <div className="min-h-screen bg-green-50">
+    <div>
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 py-3 flex flex-wrap gap-1.5 sm:gap-3 items-center justify-end border-b border-green-100">
+        <LanguageSelector />
+        <button
+          onClick={() => { setShowCart(true); setShowOrders(false) }}
+          className="relative bg-green-50 text-green-700 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-base font-medium hover:bg-green-100 transition"
+        >
+          <span className="sm:hidden">🛒</span><span className="hidden sm:inline">🛒 {t('cart')}</span>
+          {cart.length > 0 && (
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
+              {cart.length}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => {
+            if (!user) { alert(t('loginViewOrders')); return }
+            setShowOrders(true)
+            setShowCart(false)
+            setShowPayments(false)
+            fetchOrders()
+          }}
+          className="bg-blue-50 text-blue-700 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-base font-medium hover:bg-blue-100 transition"
+        >
+          <span className="sm:hidden">📦</span><span className="hidden sm:inline">📦 {t('myOrders')}</span>
+        </button>
+        <button
+          onClick={() => {
+            if (!user) { alert(t('loginChat')); return }
+            setShowChat(true)
+          }}
+          className="bg-emerald-50 text-emerald-700 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-base font-medium hover:bg-emerald-100 transition"
+        >
+          <span className="sm:hidden">💬</span><span className="hidden sm:inline">💬 {t('messages')}</span>
+        </button>
+        <button
+          onClick={() => {
+            if (!user) { alert(t('loginPayments')); return }
+            setShowPayments(true)
+            setShowOrders(false)
+            setShowCart(false)
+            fetchPayments()
+          }}
+          className="bg-purple-50 text-purple-700 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-base font-medium hover:bg-purple-100 transition"
+        >
+          <span className="sm:hidden">💳</span><span className="hidden sm:inline">💳 {t('payments')}</span>
+        </button>
+      </div>
 
-      {/* Navbar */}
-      <nav className="bg-white shadow-md px-6 py-4 flex justify-between items-center sticky top-0 z-40">
-        <h1 className="text-2xl font-bold text-green-700">🌾 KrishiLink</h1>
-        <div className="flex gap-3 items-center">
-
-          {/* Cart Button */}
-          <button
-            onClick={() => { setShowCart(true); setShowOrders(false) }}
-            className="relative bg-green-50 text-green-700 px-4 py-2 rounded-xl font-medium hover:bg-green-100 transition"
-          >
-            🛒 Cart
-            {cart.length > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
-                {cart.length}
-              </span>
-            )}
-          </button>
-
-          {/* Orders Button - FIX: login check */}
-          <button
-            onClick={() => {
-              if (!user) { alert('Please login to view your orders!'); return }
-              setShowOrders(true)
-              setShowCart(false)
-              setShowPayments(false)
-              fetchOrders()
-            }}
-            className="bg-blue-50 text-blue-700 px-4 py-2 rounded-xl font-medium hover:bg-blue-100 transition"
-          >
-            📦 My Orders
-          </button>
-          <button
-            onClick={() => {
-              if (!user) { alert('Please login to chat!'); return }
-              setShowChat(true)
-            }}
-            className="bg-emerald-50 text-emerald-700 px-4 py-2 rounded-xl font-medium hover:bg-emerald-100 transition"
-          >
-            💬 Messages
-          </button>
-          <button
-            onClick={() => {
-              if (!user) { alert('Please login to view payment history!'); return }
-              setShowPayments(true)
-              setShowOrders(false)
-              setShowCart(false)
-              fetchPayments()
-            }}
-            className="bg-purple-50 text-purple-700 px-4 py-2 rounded-xl font-medium hover:bg-purple-100 transition"
-          >
-            💳 Payments
-          </button>
-
-          <button onClick={onBack} className="text-gray-500 hover:text-red-500 text-sm">← Back</button>
-        </div>
-      </nav>
-
-      <div className="max-w-6xl mx-auto px-6 py-8">
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 py-6 sm:py-8">
 
         {/* Success Toast */}
         {ordered && (
@@ -505,7 +524,7 @@ function Marketplace({ user, onBack }) {
         {/* Search & Filter */}
         <div className="flex flex-col md:flex-row gap-4 mb-8">
           <input
-            placeholder="🔍 Search vegetables, fruits..."
+            placeholder={t('searchPlaceholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="flex-1 border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:border-green-500"
@@ -517,7 +536,7 @@ function Marketplace({ user, onBack }) {
                 onClick={() => setCategory(cat)}
                 className={`px-4 py-2 rounded-xl font-medium text-sm transition ${category === cat ? 'bg-green-600 text-white' : 'bg-white text-gray-600 border border-gray-300 hover:border-green-400'}`}
               >
-                {cat}
+                {t(categoryKeys[cat])}
               </button>
             ))}
           </div>
@@ -525,11 +544,11 @@ function Marketplace({ user, onBack }) {
 
         {/* Products Grid */}
         {loading ? (
-          <div className="text-center py-20 text-gray-400 text-xl">Loading fresh produce... 🌾</div>
+          <Loading label={t('loadingProducts')} size="lg" className="py-20" />
         ) : filtered.length === 0 ? (
           <div className="text-center py-20 text-gray-400">
             <p className="text-5xl mb-4">🥦</p>
-            <p className="text-xl">No products found!</p>
+            <p className="text-xl">{t('noProducts')}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -552,18 +571,16 @@ function Marketplace({ user, onBack }) {
                   {p.name}
                 </h3>
                 <p className="text-gray-500 text-sm">{p.category} • 📍 {p.location}</p>
-                {farmers[p.farmer_id] && (
-                  <p className="text-green-600 text-sm mt-1">👨‍🌾 {farmers[p.farmer_id]}</p>
-                )}
+                <FarmerBadge farmerId={p.farmer_id} />
                 <p className="text-gray-600 text-sm mt-1 line-clamp-2">{p.description}</p>
 
                 {/* Price & Stock */}
                 <div className="flex justify-between items-center mt-4">
                   <div>
                     <span className="text-2xl font-bold text-green-700">₹{p.price_per_kg}</span>
-                    <span className="text-gray-500 text-sm">/kg</span>
+                    <span className="text-gray-500 text-sm">{t('perKg')}</span>
                   </div>
-                  <span className="text-blue-600 text-sm font-medium">{p.quantity_kg}kg left</span>
+                  <span className="text-blue-600 text-sm font-medium">{p.quantity_kg}kg {t('left')}</span>
                 </div>
 
                 {/* Quantity Selector */}
@@ -590,13 +607,13 @@ function Marketplace({ user, onBack }) {
                     onClick={() => addToCart(p)}
                     className="flex-1 border-2 border-green-600 text-green-600 py-2 rounded-xl font-medium hover:bg-green-50 transition text-sm"
                   >
-                    🛒 Add to Cart
+                    {t('addToCart')}
                   </button>
                   <button
                     onClick={() => openBuyNowCheckout(p)}
                     className="flex-1 bg-green-600 text-white py-2 rounded-xl font-medium hover:bg-green-700 transition text-sm"
                   >
-                    ⚡ Buy Now
+                    {t('buyNow')}
                   </button>
                 </div>
               </div>
@@ -607,20 +624,22 @@ function Marketplace({ user, onBack }) {
 
       {/* ========== CART SIDEBAR ========== */}
       {showCart && (
-        <div className="fixed inset-0 z-50 flex">
-          {/* FIX: bg-black/40 instead of bg-opacity-40 */}
-          <div className="flex-1 bg-black/40 backdrop-blur-sm" onClick={() => setShowCart(false)} />
-          <div className="w-full max-w-md bg-white h-full shadow-2xl flex flex-col overflow-hidden">
-            <div className="px-6 py-4 border-b flex justify-between items-center bg-green-700 text-white">
-              <h2 className="text-xl font-bold">🛒 Your Cart ({cart.length})</h2>
-              <button onClick={() => setShowCart(false)} className="text-white text-2xl">×</button>
+        <div className="fixed inset-0 z-50 flex flex-col sm:flex-row">
+          <div
+            className="flex-1 bg-black/40 backdrop-blur-sm order-2 sm:order-1 min-h-0 sm:min-h-full"
+            onClick={() => setShowCart(false)}
+          />
+          <div className="w-full sm:max-w-md bg-white shadow-2xl flex flex-col overflow-hidden order-1 sm:order-2 max-h-[92vh] sm:max-h-none sm:h-full rounded-t-2xl sm:rounded-none">
+            <div className="px-4 sm:px-6 py-3 sm:py-4 border-b flex justify-between items-center bg-green-700 text-white shrink-0">
+              <h2 className="text-lg sm:text-xl font-bold">{t('yourCart', { count: cart.length })}</h2>
+              <button onClick={() => setShowCart(false)} className="text-white text-2xl p-1" aria-label="Close cart">×</button>
             </div>
 
             {cart.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
                 <p className="text-5xl mb-4">🛒</p>
-                <p className="text-lg">Cart is empty!</p>
-                <p className="text-sm mt-1">Add some fresh produce</p>
+                <p className="text-lg">{t('cartEmpty')}</p>
+                <p className="text-sm mt-1">{t('cartEmptyHint')}</p>
               </div>
             ) : (
               <>
@@ -637,44 +656,50 @@ function Marketplace({ user, onBack }) {
                         <button
                           onClick={() => removeFromCart(item.id)}
                           className="text-red-400 text-xs hover:text-red-600 mt-1"
-                        >Remove</button>
+                        >{t('remove')}</button>
                       </div>
                     </div>
                   ))}
                 </div>
 
-                <div className="p-4 border-t bg-white">
-                  <div className="flex justify-between items-center mb-4">
-                    <span className="text-gray-600 font-medium">Total Amount</span>
-                    <span className="text-2xl font-bold text-green-700">₹{cartTotal.toFixed(0)}</span>
+                <div className="p-4 border-t bg-white shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                  <div className="flex justify-between items-center mb-3 sm:mb-4">
+                    <span className="text-gray-600 font-medium text-sm sm:text-base">{t('totalAmount')}</span>
+                    <span className="text-xl sm:text-2xl font-bold text-green-700">₹{cartTotal.toFixed(0)}</span>
                   </div>
-                  <div className="mb-4">
-                    <p className="text-sm font-medium text-gray-700 mb-2">Select Payment Method</p>
-                    <div className="grid grid-cols-2 gap-2">
+                  <div className="mb-3 sm:mb-4">
+                    <p className="text-sm font-medium text-gray-700 mb-2">{t('selectPayment')}</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <button
+                        type="button"
                         onClick={() => setPaymentMethod('online')}
-                        className={`px-3 py-2 rounded-lg text-sm font-medium border ${paymentMethod === 'online' ? 'bg-green-100 border-green-500 text-green-700' : 'bg-white border-gray-300 text-gray-600'}`}
+                        className={`px-3 py-2.5 rounded-lg text-sm font-medium border ${paymentMethod === 'online' ? 'bg-green-100 border-green-500 text-green-700' : 'bg-white border-gray-300 text-gray-600'}`}
                       >
-                        💳 Online Payment
+                        {t('onlinePayment')}
                       </button>
                       <button
+                        type="button"
                         onClick={() => setPaymentMethod('cod')}
-                        className={`px-3 py-2 rounded-lg text-sm font-medium border ${paymentMethod === 'cod' ? 'bg-yellow-100 border-yellow-500 text-yellow-700' : 'bg-white border-gray-300 text-gray-600'}`}
+                        className={`px-3 py-2.5 rounded-lg text-sm font-medium border ${paymentMethod === 'cod' ? 'bg-yellow-100 border-yellow-500 text-yellow-700' : 'bg-white border-gray-300 text-gray-600'}`}
                       >
-                        💵 Cash on Delivery
+                        {t('cod')}
                       </button>
                     </div>
                   </div>
                   <button
+                    type="button"
                     onClick={handleCheckout}
                     disabled={checkoutLoading}
-                    className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition disabled:opacity-70"
+                    className="w-full bg-green-600 text-white py-3 sm:py-3.5 rounded-xl font-bold hover:bg-green-700 transition disabled:opacity-70 flex items-center justify-center gap-2 min-h-[48px]"
                   >
+                    {checkoutLoading && (
+                      <span className="h-5 w-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    )}
                     {checkoutLoading
-                      ? 'Processing payment...'
+                      ? t('processingPayment')
                       : paymentMethod === 'cod'
-                        ? '✅ Place Order (COD)'
-                        : '💳 Pay with Razorpay'}
+                        ? t('placeOrderCod')
+                        : t('payRazorpay')}
                   </button>
                 </div>
               </>
@@ -685,24 +710,21 @@ function Marketplace({ user, onBack }) {
 
       {/* ========== ORDER HISTORY SIDEBAR ========== */}
       {showOrders && (
-        <div className="fixed inset-0 z-50 flex">
-          {/* FIX: bg-black/40 */}
-          <div className="flex-1 bg-black/40 backdrop-blur-sm" onClick={() => setShowOrders(false)} />
-          <div className="w-full max-w-md bg-white h-full shadow-2xl flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-50 flex flex-col sm:flex-row">
+          <div className="flex-1 bg-black/40 backdrop-blur-sm order-2 sm:order-1" onClick={() => setShowOrders(false)} />
+          <div className="w-full sm:max-w-md bg-white shadow-2xl flex flex-col overflow-hidden order-1 sm:order-2 max-h-[92vh] sm:max-h-none sm:h-full rounded-t-2xl sm:rounded-none">
             <div className="px-6 py-4 border-b flex justify-between items-center bg-blue-700 text-white">
-              <h2 className="text-xl font-bold">📦 My Orders</h2>
+              <h2 className="text-xl font-bold">📦 {t('myOrders')}</h2>
               <button onClick={() => setShowOrders(false)} className="text-white text-2xl">×</button>
             </div>
 
             {ordersLoading ? (
-              <div className="flex-1 flex items-center justify-center text-gray-400">
-                Loading orders...
-              </div>
+              <Loading label={t('loadingOrders')} className="flex-1" />
             ) : orders.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
                 <p className="text-5xl mb-4">📦</p>
-                <p className="text-lg">No orders yet!</p>
-                <p className="text-sm mt-1">Buy something from the marketplace</p>
+                <p className="text-lg">{t('noOrders')}</p>
+                <p className="text-sm mt-1">{t('noOrdersHint')}</p>
               </div>
             ) : (
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -736,23 +758,21 @@ function Marketplace({ user, onBack }) {
 
       {/* ========== PAYMENT HISTORY SIDEBAR ========== */}
       {showPayments && (
-        <div className="fixed inset-0 z-50 flex">
-          <div className="flex-1 bg-black/40 backdrop-blur-sm" onClick={() => setShowPayments(false)} />
-          <div className="w-full max-w-md bg-white h-full shadow-2xl flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-50 flex flex-col sm:flex-row">
+          <div className="flex-1 bg-black/40 backdrop-blur-sm order-2 sm:order-1" onClick={() => setShowPayments(false)} />
+          <div className="w-full sm:max-w-md bg-white shadow-2xl flex flex-col overflow-hidden order-1 sm:order-2 max-h-[92vh] sm:max-h-none sm:h-full rounded-t-2xl sm:rounded-none">
             <div className="px-6 py-4 border-b flex justify-between items-center bg-purple-700 text-white">
-              <h2 className="text-xl font-bold">💳 Payment History</h2>
+              <h2 className="text-xl font-bold">{t('paymentHistory')}</h2>
               <button onClick={() => setShowPayments(false)} className="text-white text-2xl">×</button>
             </div>
 
             {paymentsLoading ? (
-              <div className="flex-1 flex items-center justify-center text-gray-400">
-                Loading payments...
-              </div>
+              <Loading label={t('loadingPayments')} className="flex-1" />
             ) : payments.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
                 <p className="text-5xl mb-4">💳</p>
-                <p className="text-lg">No payments yet!</p>
-                <p className="text-sm mt-1">Checkout with Razorpay to see history</p>
+                <p className="text-lg">{t('noPayments')}</p>
+                <p className="text-sm mt-1">{t('noPaymentsHint')}</p>
               </div>
             ) : (
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -837,9 +857,9 @@ function Marketplace({ user, onBack }) {
 
             <h2 className="text-2xl font-bold text-green-800 capitalize">{selectedProduct.name}</h2>
             <p className="text-gray-500 mt-1">{selectedProduct.category} • 📍 {selectedProduct.location}</p>
-            {farmers[selectedProduct.farmer_id] && (
-              <p className="text-green-600 mt-1 font-medium">👨‍🌾 Farmer: {farmers[selectedProduct.farmer_id]}</p>
-            )}
+            <div className="mt-2">
+              <FarmerBadge farmerId={selectedProduct.farmer_id} />
+            </div>
             <p className="text-gray-600 mt-3 leading-relaxed">{selectedProduct.description}</p>
 
             <div className="flex justify-between items-center mt-4 py-3 border-t border-b border-gray-100">
@@ -873,13 +893,13 @@ function Marketplace({ user, onBack }) {
                 onClick={() => { addToCart(selectedProduct); setSelectedProduct(null) }}
                 className="flex-1 border-2 border-green-600 text-green-600 py-3 rounded-xl font-bold hover:bg-green-50 transition"
               >
-                🛒 Add to Cart
+                {t('addToCart')}
               </button>
               <button
                 onClick={() => openBuyNowCheckout(selectedProduct)}
                 className="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition"
               >
-                ⚡ Buy Now
+                {t('buyNow')}
               </button>
             </div>
           </div>
@@ -895,44 +915,51 @@ function Marketplace({ user, onBack }) {
       )}
 
       {buyNowItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setBuyNowItem(null)} />
-          <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 z-10">
-            <h3 className="text-xl font-bold text-green-800">Place Order</h3>
-            <p className="text-sm text-gray-600 mt-1">{buyNowItem.name} • {buyNowItem.qty} kg</p>
+          <div className="relative bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl max-w-md w-full p-5 sm:p-6 z-10 max-h-[90vh] overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom))]">
+            <h3 className="text-lg sm:text-xl font-bold text-green-800">{t('placeOrder')}</h3>
+            <p className="text-sm text-gray-600 mt-1 capitalize">{buyNowItem.name} • {buyNowItem.qty} kg</p>
             <p className="text-lg font-bold text-green-700 mt-3">Total: ₹{buyNowItem.amount.toFixed(0)}</p>
 
             <div className="mt-4">
-              <p className="text-sm font-medium text-gray-700 mb-2">Select Payment Method</p>
-              <div className="grid grid-cols-2 gap-2">
+              <p className="text-sm font-medium text-gray-700 mb-2">{t('selectPayment')}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button
+                  type="button"
                   onClick={() => setBuyNowPaymentMethod('online')}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium border ${buyNowPaymentMethod === 'online' ? 'bg-green-100 border-green-500 text-green-700' : 'bg-white border-gray-300 text-gray-600'}`}
+                  className={`px-3 py-2.5 rounded-lg text-sm font-medium border ${buyNowPaymentMethod === 'online' ? 'bg-green-100 border-green-500 text-green-700' : 'bg-white border-gray-300 text-gray-600'}`}
                 >
-                  💳 Online
+                  {t('onlinePayment')}
                 </button>
                 <button
+                  type="button"
                   onClick={() => setBuyNowPaymentMethod('cod')}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium border ${buyNowPaymentMethod === 'cod' ? 'bg-yellow-100 border-yellow-500 text-yellow-700' : 'bg-white border-gray-300 text-gray-600'}`}
+                  className={`px-3 py-2.5 rounded-lg text-sm font-medium border ${buyNowPaymentMethod === 'cod' ? 'bg-yellow-100 border-yellow-500 text-yellow-700' : 'bg-white border-gray-300 text-gray-600'}`}
                 >
-                  💵 COD
+                  {t('cod')}
                 </button>
               </div>
             </div>
 
-            <div className="flex gap-2 mt-6">
+            <div className="flex flex-col-reverse sm:flex-row gap-2 mt-6">
               <button
+                type="button"
                 onClick={() => setBuyNowItem(null)}
-                className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg hover:bg-gray-50"
+                className="flex-1 border border-gray-300 text-gray-700 py-3 sm:py-2 rounded-lg hover:bg-gray-50 min-h-[44px]"
               >
-                Cancel
+                {t('cancel')}
               </button>
               <button
+                type="button"
                 onClick={handleBuyNowCheckout}
                 disabled={checkoutLoading}
-                className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 disabled:opacity-70"
+                className="flex-1 bg-green-600 text-white py-3 sm:py-2 rounded-lg hover:bg-green-700 disabled:opacity-70 flex items-center justify-center gap-2 min-h-[44px] font-medium"
               >
-                {checkoutLoading ? 'Processing...' : buyNowPaymentMethod === 'cod' ? 'Place COD Order' : 'Pay & Place'}
+                {checkoutLoading && (
+                  <span className="h-4 w-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                )}
+                {checkoutLoading ? t('processingPayment') : buyNowPaymentMethod === 'cod' ? t('placeCodOrder') : t('payAndPlace')}
               </button>
             </div>
           </div>
@@ -943,31 +970,31 @@ function Marketplace({ user, onBack }) {
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setReceipt(null)} />
           <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 z-10">
-            <h3 className="text-xl font-bold text-green-800">✅ Order Receipt</h3>
+            <h3 className="text-xl font-bold text-green-800">{t('orderReceipt')}</h3>
             <div className="mt-4 space-y-2 text-sm text-gray-700">
-              <p><span className="font-semibold">Payment:</span> {receipt.paymentMethod === 'cod' ? 'Cash on Delivery' : 'Online Payment'}</p>
+              <p><span className="font-semibold">{t('paymentLabel')}</span> {receipt.paymentMethod === 'cod' ? t('cashOnDelivery') : t('onlinePaymentLabel')}</p>
               {receipt.type === 'single' ? (
                 <>
-                  <p><span className="font-semibold">Order ID:</span> {receipt.orderId || 'N/A'}</p>
-                  <p><span className="font-semibold">Product:</span> {receipt.productName}</p>
-                  <p><span className="font-semibold">Quantity:</span> {receipt.quantity} kg</p>
-                  <p><span className="font-semibold">Amount:</span> ₹{Number(receipt.totalAmount || 0).toFixed(0)}</p>
-                  <p><span className="font-semibold">Status:</span> {receipt.status}</p>
+                  <p><span className="font-semibold">{t('orderIdLabel')}</span> {receipt.orderId || 'N/A'}</p>
+                  <p><span className="font-semibold">{t('productLabel')}</span> {receipt.productName}</p>
+                  <p><span className="font-semibold">{t('quantityLabel')}</span> {receipt.quantity} kg</p>
+                  <p><span className="font-semibold">{t('amountLabel')}</span> ₹{Number(receipt.totalAmount || 0).toFixed(0)}</p>
+                  <p><span className="font-semibold">{t('statusLabel')}</span> {receipt.status}</p>
                 </>
               ) : (
                 <>
-                  <p><span className="font-semibold">Orders placed:</span> {receipt.orderCount}</p>
-                  {receipt.firstOrderId && <p><span className="font-semibold">First Order ID:</span> {receipt.firstOrderId}</p>}
-                  <p><span className="font-semibold">Total Amount:</span> ₹{Number(receipt.totalAmount || 0).toFixed(0)}</p>
+                  <p><span className="font-semibold">{t('ordersPlacedLabel')}</span> {receipt.orderCount}</p>
+                  {receipt.firstOrderId && <p><span className="font-semibold">{t('firstOrderIdLabel')}</span> {receipt.firstOrderId}</p>}
+                  <p><span className="font-semibold">{t('totalAmount')}</span> ₹{Number(receipt.totalAmount || 0).toFixed(0)}</p>
                 </>
               )}
-              <p><span className="font-semibold">Date:</span> {new Date(receipt.createdAt || Date.now()).toLocaleString('en-IN')}</p>
+              <p><span className="font-semibold">{t('dateLabel')}</span> {new Date(receipt.createdAt || Date.now()).toLocaleString('en-IN')}</p>
             </div>
             <button
               onClick={() => setReceipt(null)}
               className="mt-6 w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700"
             >
-              Close
+              {t('close')}
             </button>
           </div>
         </div>
