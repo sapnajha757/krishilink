@@ -2,26 +2,22 @@ import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import crypto from 'crypto'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import Razorpay from 'razorpay'
 import { createClient } from '@supabase/supabase-js'
 
-dotenv.config()
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+dotenv.config({ path: path.resolve(__dirname, '../.env') })
 const app = express()
-
-const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173,http://localhost:5174')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean)
 
 app.use(
   cors({
-    origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true)
-      } else {
-        callback(new Error(`CORS blocked: ${origin}`))
-      }
-    },
+    origin: [
+      'https://krishilink-delta.vercel.app',
+      /https:\/\/krishilink.*\.vercel\.app$/,
+      'http://localhost:5173',
+    ],
     credentials: true,
   })
 )
@@ -93,7 +89,11 @@ app.get('/api/health', (_req, res) => {
     env: process.env.NODE_ENV || 'development',
     razorpay: razorpayEnabled,
     supabaseDb: dbEnabled,
-    corsOrigins: allowedOrigins,
+    corsOrigins: [
+      'https://krishilink-delta.vercel.app',
+      'https://krishilink*.vercel.app',
+      'http://localhost:5173',
+    ],
   })
 })
 
@@ -165,17 +165,16 @@ Respond in simple English with:
 
 const advisoryHandler = async (req, res) => {
   const { location, month } = req.body || {}
-  if (!location || !month) {
-    return res.status(400).json({ error: 'location and month are required' })
+  if (!location) {
+    return res.status(400).json({ error: 'location is required' })
   }
 
-  try {
-    const result = await getAiAdvisory({ location, month })
-    return res.json({ result })
-  } catch (error) {
-    console.error('Advisory API error:', error.message)
-    return res.status(500).json({ error: 'Failed to generate advisory' })
-  }
+  const resolvedMonth =
+    month ||
+    new Date().toLocaleString('en-US', { month: 'long' })
+
+  const result = await getAiAdvisory({ location, month: resolvedMonth })
+  return res.json({ result })
 }
 
 app.post('/advisory', advisoryHandler)
@@ -233,98 +232,108 @@ const buildFallbackForecast = () => {
   })
 }
 
+const buildFallbackWeatherResult = (location, reason) => {
+  if (reason) {
+    console.warn(`OpenWeather unavailable (${reason}), using fallback forecast`)
+  }
+  return {
+    resolvedLocation: location,
+    forecast: buildFallbackForecast(),
+    source: 'fallback',
+  }
+}
+
 const getOpenWeatherForecast = async (location) => {
   const weatherApiKey = process.env.OPENWEATHER_API_KEY || process.env.VITE_OPENWEATHER_KEY
   if (!weatherApiKey) {
-    const fallback = buildFallbackForecast()
-    return {
-      resolvedLocation: location,
-      forecast: fallback,
-      source: 'fallback',
+    return buildFallbackWeatherResult(location, 'no API key configured')
+  }
+
+  try {
+    const geoRes = await fetch(
+      `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(location)}&limit=1&appid=${weatherApiKey}`
+    )
+    if (!geoRes.ok) {
+      return buildFallbackWeatherResult(location, `geocoding HTTP ${geoRes.status}`)
     }
-  }
+    const geoData = await geoRes.json()
+    if (!Array.isArray(geoData) || geoData.length === 0) {
+      return buildFallbackWeatherResult(location, 'location not found')
+    }
 
-  const geoRes = await fetch(
-    `http://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(location)}&limit=1&appid=${weatherApiKey}`
-  )
-  if (!geoRes.ok) {
-    throw new Error(`OpenWeather geocoding failed: ${geoRes.status}`)
-  }
-  const geoData = await geoRes.json()
-  if (!Array.isArray(geoData) || geoData.length === 0) {
-    throw new Error('Location not found in OpenWeather')
-  }
+    const { lat, lon, name, state, country } = geoData[0]
+    const resolvedLocation = [name, state, country].filter(Boolean).join(', ')
 
-  const { lat, lon, name, state, country } = geoData[0]
-  const resolvedLocation = [name, state, country].filter(Boolean).join(', ')
+    const forecastRes = await fetch(
+      `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=metric&appid=${weatherApiKey}`
+    )
+    if (!forecastRes.ok) {
+      return buildFallbackWeatherResult(location, `forecast HTTP ${forecastRes.status}`)
+    }
+    const forecastData = await forecastRes.json()
+    const entries = forecastData?.list || []
+    if (entries.length === 0) {
+      return buildFallbackWeatherResult(location, 'empty forecast')
+    }
 
-  const forecastRes = await fetch(
-    `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=metric&appid=${weatherApiKey}`
-  )
-  if (!forecastRes.ok) {
-    throw new Error(`OpenWeather forecast failed: ${forecastRes.status}`)
-  }
-  const forecastData = await forecastRes.json()
-  const entries = forecastData?.list || []
-  if (entries.length === 0) {
-    throw new Error('No forecast data from OpenWeather')
-  }
-
-  const grouped = {}
-  for (const entry of entries) {
-    const key = toDayKey(entry.dt)
-    if (!grouped[key]) {
-      grouped[key] = {
-        date: key,
-        tempMin: Number.POSITIVE_INFINITY,
-        tempMax: Number.NEGATIVE_INFINITY,
-        humiditySum: 0,
-        humidityCount: 0,
-        rainMm: 0,
-        condition: entry.weather?.[0]?.main || 'Clear',
+    const grouped = {}
+    for (const entry of entries) {
+      const key = toDayKey(entry.dt)
+      if (!grouped[key]) {
+        grouped[key] = {
+          date: key,
+          tempMin: Number.POSITIVE_INFINITY,
+          tempMax: Number.NEGATIVE_INFINITY,
+          humiditySum: 0,
+          humidityCount: 0,
+          rainMm: 0,
+          condition: entry.weather?.[0]?.main || 'Clear',
+        }
       }
+
+      grouped[key].tempMin = Math.min(grouped[key].tempMin, entry.main?.temp_min ?? grouped[key].tempMin)
+      grouped[key].tempMax = Math.max(grouped[key].tempMax, entry.main?.temp_max ?? grouped[key].tempMax)
+      grouped[key].humiditySum += entry.main?.humidity ?? 0
+      grouped[key].humidityCount += 1
+      grouped[key].rainMm += entry.rain?.['3h'] ?? 0
     }
 
-    grouped[key].tempMin = Math.min(grouped[key].tempMin, entry.main?.temp_min ?? grouped[key].tempMin)
-    grouped[key].tempMax = Math.max(grouped[key].tempMax, entry.main?.temp_max ?? grouped[key].tempMax)
-    grouped[key].humiditySum += entry.main?.humidity ?? 0
-    grouped[key].humidityCount += 1
-    grouped[key].rainMm += entry.rain?.['3h'] ?? 0
-  }
+    const days = Object.values(grouped)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(0, 7)
+      .map((d) => ({
+        date: d.date,
+        temp_min_c: Number.isFinite(d.tempMin) ? Number(d.tempMin.toFixed(1)) : 0,
+        temp_max_c: Number.isFinite(d.tempMax) ? Number(d.tempMax.toFixed(1)) : 0,
+        humidity: d.humidityCount ? Math.round(d.humiditySum / d.humidityCount) : 0,
+        rain_mm: Number(d.rainMm.toFixed(1)),
+        condition: d.condition,
+        predicted: false,
+      }))
 
-  const days = Object.values(grouped)
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, 7)
-    .map((d) => ({
-      date: d.date,
-      temp_min_c: Number.isFinite(d.tempMin) ? Number(d.tempMin.toFixed(1)) : 0,
-      temp_max_c: Number.isFinite(d.tempMax) ? Number(d.tempMax.toFixed(1)) : 0,
-      humidity: d.humidityCount ? Math.round(d.humiditySum / d.humidityCount) : 0,
-      rain_mm: Number(d.rainMm.toFixed(1)),
-      condition: d.condition,
-      predicted: false,
-    }))
-
-  while (days.length < 7) {
-    const last = days[days.length - 1] || {
-      date: new Date().toISOString().slice(0, 10),
-      temp_min_c: 24,
-      temp_max_c: 32,
-      humidity: 65,
-      rain_mm: 2,
-      condition: 'Clouds',
-      predicted: true,
+    while (days.length < 7) {
+      const last = days[days.length - 1] || {
+        date: new Date().toISOString().slice(0, 10),
+        temp_min_c: 24,
+        temp_max_c: 32,
+        humidity: 65,
+        rain_mm: 2,
+        condition: 'Clouds',
+        predicted: true,
+      }
+      const nextDate = new Date(last.date)
+      nextDate.setDate(nextDate.getDate() + 1)
+      days.push({
+        ...last,
+        date: nextDate.toISOString().slice(0, 10),
+        predicted: true,
+      })
     }
-    const nextDate = new Date(last.date)
-    nextDate.setDate(nextDate.getDate() + 1)
-    days.push({
-      ...last,
-      date: nextDate.toISOString().slice(0, 10),
-      predicted: true,
-    })
-  }
 
-  return { resolvedLocation, forecast: days, source: 'openweather' }
+    return { resolvedLocation, forecast: days, source: 'openweather' }
+  } catch (error) {
+    return buildFallbackWeatherResult(location, error.message)
+  }
 }
 
 app.post('/api/weather-advisory', async (req, res) => {
@@ -333,23 +342,18 @@ app.post('/api/weather-advisory', async (req, res) => {
     return res.status(400).json({ error: 'location is required' })
   }
 
-  try {
-    const weatherData = await getOpenWeatherForecast(location)
-    const advisory = buildWeatherAdvisory({
-      location: weatherData.resolvedLocation,
-      forecast: weatherData.forecast,
-    })
+  const weatherData = await getOpenWeatherForecast(location)
+  const advisory = buildWeatherAdvisory({
+    location: weatherData.resolvedLocation,
+    forecast: weatherData.forecast,
+  })
 
-    return res.json({
-      location: weatherData.resolvedLocation,
-      source: weatherData.source,
-      forecast: weatherData.forecast,
-      advisory,
-    })
-  } catch (error) {
-    console.error('Weather advisory API error:', error.message)
-    return res.status(500).json({ error: 'Failed to fetch weather advisory' })
-  }
+  return res.json({
+    location: weatherData.resolvedLocation,
+    source: weatherData.source,
+    forecast: weatherData.forecast,
+    advisory,
+  })
 })
 
 app.get('/api/payments/config', (_req, res) => {
