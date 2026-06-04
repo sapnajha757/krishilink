@@ -3,8 +3,8 @@ import { supabase } from './supabase'
 import ChatPanel from './ChatPanel'
 import LanguageSelector from './components/LanguageSelector'
 import { useLanguage } from './i18n/LanguageContext'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000'
+import { API_URL } from './api'
+import { getLocalWeatherAdvisory } from './advisoryFallback'
 
 function FarmerDashboard({ user }) {
   const { t } = useLanguage()
@@ -49,22 +49,38 @@ function FarmerDashboard({ user }) {
     setForecast([])
     setWeatherSource('')
     try {
-      const response = await fetch(`${API_BASE_URL}/api/weather-advisory`, {
+      const response = await fetch(`${API_URL}/api/weather-advisory`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           location: advisoryForm.location,
-        })
+        }),
       })
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data?.error || 'API request failed')
+      const raw = await response.text()
+      let data = {}
+      try {
+        data = raw ? JSON.parse(raw) : {}
+      } catch {
+        throw new Error(response.ok ? t('advisoryInvalidResponse') : t('advisoryApiError'))
       }
-      setAdvisory(data.advisory || data.result || 'No advisory returned.')
+      if (!response.ok) {
+        throw new Error(data?.error || t('advisoryApiError'))
+      }
+      setAdvisory(data.advisory || data.result || t('advisoryEmpty'))
       setForecast(data.forecast || [])
       setWeatherSource(data.source || '')
     } catch (err) {
-      setAdvisory(`An error occurred: ${err.message}. Please check the server.`)
+      const isNetwork =
+        err?.name === 'TypeError' &&
+        (err.message === 'Failed to fetch' || err.message.includes('NetworkError'))
+      if (isNetwork) {
+        const local = getLocalWeatherAdvisory(advisoryForm.location)
+        setAdvisory(local.advisory)
+        setForecast(local.forecast)
+        setWeatherSource(local.source)
+      } else {
+        setAdvisory(`${t('advisoryApiError')}: ${err.message}`)
+      }
     }
     setAdvisoryLoading(false)
   }

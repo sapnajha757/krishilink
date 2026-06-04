@@ -4,8 +4,7 @@ import ChatPanel from './ChatPanel'
 import Loading from './Loading'
 import LanguageSelector from './components/LanguageSelector'
 import { useLanguage } from './i18n/LanguageContext'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000'
+import { API_URL } from './api'
 
 function Marketplace({ user }) {
   const { t } = useLanguage()
@@ -98,7 +97,7 @@ function Marketplace({ user }) {
     if (!user) { setPaymentsLoading(false); return }
     setPaymentsLoading(true)
     try {
-      const response = await fetch(`${API_BASE_URL}/api/payments?consumerId=${encodeURIComponent(user.id)}`)
+      const response = await fetch(`${API_URL}/api/payments?consumerId=${encodeURIComponent(user.id)}`)
       const data = await response.json()
       if (response.ok) {
         setPayments(data.payments || [])
@@ -115,7 +114,7 @@ function Marketplace({ user }) {
     if (!orderId) return
     setRefreshingOrderId(orderId)
     try {
-      const response = await fetch(`${API_BASE_URL}/api/payments/status/${encodeURIComponent(orderId)}`)
+      const response = await fetch(`${API_URL}/api/payments/status/${encodeURIComponent(orderId)}`)
       const data = await response.json()
       if (!response.ok) {
         throw new Error(data?.error || 'Failed to fetch payment status')
@@ -278,7 +277,7 @@ function Marketplace({ user }) {
         })),
       }
 
-      const checkoutRes = await fetch(`${API_BASE_URL}/api/payments/checkout`, {
+      const checkoutRes = await fetch(`${API_URL}/api/payments/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(checkoutPayload),
@@ -301,7 +300,7 @@ function Marketplace({ user }) {
         },
         handler: async (response) => {
           try {
-            const verifyRes = await fetch(`${API_BASE_URL}/api/payments/verify`, {
+            const verifyRes = await fetch(`${API_URL}/api/payments/verify`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(response),
@@ -363,7 +362,7 @@ function Marketplace({ user }) {
       const scriptLoaded = await loadRazorpayScript()
       if (!scriptLoaded) throw new Error('Razorpay SDK load failed')
 
-      const checkoutRes = await fetch(`${API_BASE_URL}/api/payments/checkout`, {
+      const checkoutRes = await fetch(`${API_URL}/api/payments/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -391,7 +390,7 @@ function Marketplace({ user }) {
         theme: { color: '#15803d' },
         handler: async (response) => {
           try {
-            const verifyRes = await fetch(`${API_BASE_URL}/api/payments/verify`, {
+            const verifyRes = await fetch(`${API_URL}/api/payments/verify`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(response),

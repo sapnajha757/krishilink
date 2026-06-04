@@ -64,7 +64,7 @@ Or use [`render.yaml`](../render.yaml) as a Blueprint.
 |-----|--------|
 | `VITE_SUPABASE_URL` | Supabase URL |
 | `VITE_SUPABASE_ANON_KEY` | anon key only |
-| `VITE_API_BASE_URL` | Render API URL (no trailing slash) |
+| `VITE_API_URL` | Render API URL (no trailing slash), e.g. `https://krishilink-api.onrender.com` |
 | `VITE_ADMIN_EMAILS` | your admin email |
 
 5. Deploy → copy URL, e.g. `https://krishilink.vercel.app`
