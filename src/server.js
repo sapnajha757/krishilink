@@ -7,7 +7,24 @@ import { createClient } from '@supabase/supabase-js'
 
 dotenv.config()
 const app = express()
-app.use(cors())
+
+const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173,http://localhost:5174')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean)
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true)
+      } else {
+        callback(new Error(`CORS blocked: ${origin}`))
+      }
+    },
+    credentials: true,
+  })
+)
 app.use(
   express.json({
     verify: (req, _res, buf) => {
@@ -69,9 +86,15 @@ const saveWebhookEventToDb = async (event) => {
   }
 }
 
-// Test route
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'KrishiLink backend running' })
+app.get('/api/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'KrishiLink backend running',
+    env: process.env.NODE_ENV || 'development',
+    razorpay: razorpayEnabled,
+    supabaseDb: dbEnabled,
+    corsOrigins: allowedOrigins,
+  })
 })
 
 const buildLocalAdvisory = ({ location, month }) => {

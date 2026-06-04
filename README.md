@@ -35,20 +35,13 @@ cd krishilink
 npm install
 ```
 
-Create `.env` in the project root:
+Copy the template and fill in your keys:
 
-```env
-VITE_SUPABASE_URL=your_supabase_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-VITE_ADMIN_EMAILS=admin@example.com
-VITE_API_BASE_URL=http://localhost:4000
-
-# Server (src/server.js)
-RAZORPAY_KEY_ID=
-RAZORPAY_KEY_SECRET=
-SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
+```bash
+cp .env.example .env
 ```
+
+See [`.env.example`](.env.example) for all variables (frontend `VITE_*` + server-only secrets).
 
 Run frontend and API:
 
@@ -62,37 +55,28 @@ npm run server
 
 Open [http://localhost:5173](http://localhost:5173).
 
-## Supabase Setup
+## Supabase setup
 
-### Profiles table
+Full guide: [`supabase/SETUP.md`](supabase/SETUP.md)
 
-Ensure `profiles` includes an `avatar_url` column:
+1. Create a Supabase project
+2. Run [`supabase/schema.sql`](supabase/schema.sql) in the SQL Editor
+3. Create a public Storage bucket named `avatars`
+4. Configure Auth redirect URLs for your deployed frontend URL
 
-```sql
-alter table profiles
-  add column if not exists avatar_url text;
-```
+## Razorpay setup
 
-### Avatar storage (farmer photo)
+Guide: [`docs/RAZORPAY_SETUP.md`](docs/RAZORPAY_SETUP.md)
 
-1. In Supabase Dashboard → **Storage**, create a bucket named `avatars`.
-2. Set it to **public** (or use signed URLs and adjust upload code).
-3. Add policies so authenticated users can upload to their own folder:
+## Production deployment
 
-```sql
--- Allow users to upload their own avatar
-create policy "Users upload own avatar"
-on storage.objects for insert
-to authenticated
-with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+Step-by-step: [`docs/DEPLOY.md`](docs/DEPLOY.md)
 
-create policy "Public read avatars"
-on storage.objects for select
-to public
-using (bucket_id = 'avatars');
-```
-
-Farmers set **name** and **photo** under **Profile** in the app; photos appear on marketplace product cards.
+| File | Purpose |
+|------|---------|
+| [`vercel.json`](vercel.json) | Frontend on Vercel |
+| [`render.yaml`](render.yaml) | API on Render (optional Blueprint) |
+| [`.env.example`](.env.example) | All environment variables |
 
 ## Project Structure
 
@@ -147,6 +131,21 @@ Translation files live in `src/i18n/locales/`. Add a new language by creating a 
 - Buy Now checkout uses a full-width bottom modal on mobile.
 - Checkout buttons show a spinner while `checkoutLoading` is active.
 - Payment methods stack vertically on narrow viewports.
+
+## Deployment files
+
+```
+krishilink/
+├── .env.example          # Copy to .env locally; mirror vars on Vercel + Render
+├── vercel.json           # Frontend (Vite → dist)
+├── render.yaml           # Backend API blueprint
+├── supabase/
+│   ├── schema.sql        # Tables, RLS, storage policies
+│   └── SETUP.md
+└── docs/
+    ├── DEPLOY.md         # Full hosting checklist
+    └── RAZORPAY_SETUP.md
+```
 
 ## License
 
