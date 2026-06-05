@@ -1,116 +1,146 @@
-# KrishiLink
+# 🌾 KrishiLink
 
-KrishiLink connects local farmers directly with consumers across India — fresh produce, no middlemen, online payments, and farmer profiles on every listing.
+<div align="center">
 
-## Features
+<img src="https://raw.githubusercontent.com/sapnajha757/krishilink/main/public/logo.png" alt="KrishiLink Logo" width="80" />
+
+**Hyperlocal farmer-to-consumer marketplace for India**
+
+Connect directly with local farmers — fresh produce, zero middlemen, multilingual, mobile-first.
+
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-krishilink--delta.vercel.app-22c55e?style=for-the-badge&logo=vercel&logoColor=white)](https://krishilink-delta.vercel.app)
+[![MIT License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
+[![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
+[![Supabase](https://img.shields.io/badge/Supabase-Database%20%26%20Auth-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com)
+[![Razorpay](https://img.shields.io/badge/Razorpay-Payments-072654?style=for-the-badge&logo=razorpay&logoColor=white)](https://razorpay.com)
+
+</div>
+
+---
+
+## 📸 Screenshots
+
+> Screenshots live in [`docs/screenshots/`](docs/screenshots/). To update them, see [`docs/screenshots/README.md`](docs/screenshots/README.md) or run `npm run screenshots`.
+
+| Marketplace | Farmer Dashboard | Checkout |
+|:-----------:|:----------------:|:--------:|
+| ![Marketplace](docs/screenshots/marketplace.png) | ![Dashboard](docs/screenshots/farmer-dashboard.png) | ![Checkout](docs/screenshots/checkout.png) |
+
+| Auth | Chat | Admin Panel |
+|:----:|:----:|:-----------:|
+| ![Auth](docs/screenshots/auth.png) | ![Chat](docs/screenshots/chat.png) | ![Admin](docs/screenshots/admin.png) |
+
+> 📷 **How to add screenshots:** Take screenshots of your live app, save them in `docs/screenshots/`, and they'll appear here automatically.
+
+---
+
+## ✨ Features
 
 | Feature | Description |
-|--------|-------------|
-| **Languages** | UI in English, Hindi, Punjabi, Gujarati, Maithili, Bhojpuri, Tamil, Telugu (navbar dropdown) |
-| **Auth** | Email login / sign up as Consumer or Farmer |
-| **Profile** | Farmer name, photo, phone, location, role |
-| **Marketplace** | Browse, search, cart, Buy Now, Razorpay + COD |
-| **Checkout** | Mobile-friendly cart sheet and payment modals with loading states |
-| **Farmer Dashboard** | Add/edit products, orders, weather advisory |
-| **Chat** | Messages between consumers and farmers |
-| **Admin** | User management (admin emails via env) |
+|---------|-------------|
+| 🛒 **Marketplace** | Browse, search, add to cart, Buy Now with Razorpay or COD |
+| 👩‍🌾 **Farmer Profiles** | Every listing shows the farmer's name, photo, phone & location |
+| 📊 **Farmer Dashboard** | Add/edit products, view orders, get weather advisory |
+| 💬 **Direct Chat** | Real-time messaging between consumers and farmers |
+| 🌐 **8 Languages** | English, Hindi, Punjabi, Gujarati, Maithili, Bhojpuri, Tamil, Telugu |
+| 📱 **Mobile-First** | Cart & checkout as bottom sheets on small screens |
+| 🔐 **Auth** | Email login/signup — register as Consumer or Farmer |
+| 🛡️ **Admin Panel** | User management via environment-configured admin emails |
 
-## Tech Stack
+---
 
-- **Frontend:** React 18, Vite, Tailwind CSS
-- **Backend:** Express (`src/server.js`) — payments, weather advisory
-- **Database & Auth:** Supabase
-- **Payments:** Razorpay
+## 🧰 Tech Stack
 
-## Prerequisites
+| Layer | Technology |
+|-------|------------|
+| **Frontend** | React 18, Vite, Tailwind CSS |
+| **Backend** | Node.js, Express (`src/server.js`) |
+| **Database & Auth** | Supabase (PostgreSQL + Row Level Security) |
+| **Storage** | Supabase Storage (farmer avatars & product images) |
+| **Payments** | Razorpay (online) + Cash on Delivery |
+| **Deployment** | Vercel (frontend) · Render (API) |
+| **i18n** | Custom translation layer (`src/i18n/`) |
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
 
 - Node.js 18+
-- Supabase project
-- Razorpay test/live keys (for online payments)
+- A [Supabase](https://supabase.com) project (free tier works)
+- Razorpay test keys (for payment flow)
 
-## Quick Start
+### 1 — Clone & install
 
 ```bash
+git clone https://github.com/sapnajha757/krishilink.git
 cd krishilink
 npm install
 ```
 
-Copy the template and fill in your keys:
+### 2 — Configure environment
 
 ```bash
 cp .env.example .env
 ```
 
-See [`.env.example`](.env.example) for all variables (frontend `VITE_*` + server-only secrets).
+Open `.env` and fill in your keys (see [full variable list](.env.example)):
 
-Run frontend and API:
+```env
+# Supabase
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
 
-```bash
-# Terminal 1 — React app
-npm run dev
+# Razorpay (server-side only)
+RAZORPAY_KEY_ID=rzp_test_...
+RAZORPAY_KEY_SECRET=your-secret
 
-# Terminal 2 — Express API (payments, weather)
-npm run server
+# Admin
+VITE_ADMIN_EMAILS=admin@example.com
 ```
 
-Open [http://localhost:5173](http://localhost:5173).
+### 3 — Set up Supabase
 
-## Supabase setup
+```bash
+# Run the schema in your Supabase SQL Editor:
+# → supabase/schema.sql
+```
 
 Full guide: [`supabase/SETUP.md`](supabase/SETUP.md)
 
 1. Create a Supabase project
 2. Run [`supabase/schema.sql`](supabase/schema.sql) in the SQL Editor
-3. Create a public Storage bucket named `avatars`
-4. Configure Auth redirect URLs for your deployed frontend URL
+3. Create a public Storage bucket named **`avatars`**
+4. Add your deployed frontend URL to Auth → Redirect URLs
 
-## Razorpay setup
+### 4 — Run locally
 
-Guide: [`docs/RAZORPAY_SETUP.md`](docs/RAZORPAY_SETUP.md)
+```bash
+# Terminal 1 — React frontend (http://localhost:5173)
+npm run dev
 
-## Production deployment
-
-Step-by-step: [`docs/DEPLOY.md`](docs/DEPLOY.md)
-
-| File | Purpose |
-|------|---------|
-| [`vercel.json`](vercel.json) | Frontend on Vercel |
-| [`render.yaml`](render.yaml) | API on Render (optional Blueprint) |
-| [`.env.example`](.env.example) | All environment variables |
-
-## Project Structure
-
-```
-krishilink/
-├── src/
-│   ├── App.jsx           # Home, routing between pages
-│   ├── Auth.jsx          # Login / sign up
-│   ├── Profile.jsx       # Name, photo, location
-│   ├── Marketplace.jsx   # Shop, cart, checkout
-│   ├── FarmerDashboard.jsx
-│   ├── AdminPanel.jsx
-│   ├── ChatPanel.jsx
-│   ├── Loading.jsx       # Shared spinner component
-│   ├── server.js         # Express API
-│   └── supabase.js
-├── package.json
-└── README.md
+# Terminal 2 — Express API (http://localhost:4000)
+npm run server
 ```
 
-## Scripts
+Open [http://localhost:5173](http://localhost:5173) 🎉
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start Vite dev server |
-| `npm run build` | Production build |
-| `npm run preview` | Preview production build |
-| `npm run server` | Start Express API on port 4000 |
+---
 
-## Language Support
+## 💳 Razorpay Setup
 
-Use the **language dropdown** (🌐) in the navbar on any page. Your choice is saved in the browser (`localStorage`).
+See the full guide: [`docs/RAZORPAY_SETUP.md`](docs/RAZORPAY_SETUP.md)
 
-Supported languages:
+- Use **test mode** keys during development (no real charges)
+- Switch to **live keys** before production
+- Webhook endpoint: `POST /api/payment/verify`
+
+---
+
+## 🌍 Language Support
+
+Use the **🌐 language dropdown** in the navbar — your choice is saved in `localStorage`.
 
 | Code | Language |
 |------|----------|
@@ -123,30 +153,115 @@ Supported languages:
 | `ta` | Tamil (தமிழ்) |
 | `te` | Telugu (తెలుగు) |
 
-Translation files live in `src/i18n/locales/`. Add a new language by creating a locale file and registering it in `src/i18n/translations.js` and `src/i18n/languages.js`.
+**Adding a new language:**
 
-## Mobile & Checkout
+1. Create `src/i18n/locales/<code>.js`
+2. Register it in `src/i18n/translations.js`
+3. Add to the dropdown in `src/i18n/languages.js`
 
-- Cart and order sidebars slide up as bottom sheets on small screens.
-- Buy Now checkout uses a full-width bottom modal on mobile.
-- Checkout buttons show a spinner while `checkoutLoading` is active.
-- Payment methods stack vertically on narrow viewports.
+---
 
-## Deployment files
+## 📁 Project Structure
 
 ```
 krishilink/
-├── .env.example          # Copy to .env locally; mirror vars on Vercel + Render
-├── vercel.json           # Frontend (Vite → dist)
-├── render.yaml           # Backend API blueprint
+├── src/
+│   ├── App.jsx              # Root app & routing
+│   ├── Auth.jsx             # Login / sign up
+│   ├── Profile.jsx          # Farmer profile page
+│   ├── Marketplace.jsx      # Shop, cart, checkout
+│   ├── FarmerDashboard.jsx  # Farmer product & order management
+│   ├── AdminPanel.jsx       # Admin user management
+│   ├── ChatPanel.jsx        # Consumer ↔ farmer messaging
+│   ├── Loading.jsx          # Shared spinner component
+│   ├── server.js            # Express API (payments, weather)
+│   ├── supabase.js          # Supabase client
+│   └── i18n/
+│       ├── translations.js
+│       ├── languages.js
+│       └── locales/         # Per-language JSON files
 ├── supabase/
-│   ├── schema.sql        # Tables, RLS, storage policies
+│   ├── schema.sql           # Tables, RLS, storage policies
 │   └── SETUP.md
-└── docs/
-    ├── DEPLOY.md         # Full hosting checklist
-    └── RAZORPAY_SETUP.md
+├── docs/
+│   ├── DEPLOY.md
+│   ├── RAZORPAY_SETUP.md
+│   └── screenshots/         # ← add your screenshots here
+├── public/
+├── .env.example
+├── vercel.json              # Vercel frontend config
+├── render.yaml              # Render API blueprint
+└── package.json
 ```
 
-## License
+---
 
-MIT — built for learning and local farm-to-table commerce.
+## 📜 Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start Vite dev server on :5173 |
+| `npm run build` | Production build → `dist/` |
+| `npm run preview` | Preview the production build |
+| `npm run server` | Start Express API on :4000 |
+
+---
+
+## 🚢 Deploying to Production
+
+Full checklist: [`docs/DEPLOY.md`](docs/DEPLOY.md)
+
+| Service | What it hosts | Config file |
+|----------|-----------------|--------------|
+| [Vercel](https://vercel.com) | React frontend | `vercel.json` |
+| [Render](https://render.com) | Express API | `render.yaml` |
+| [Supabase](https://supabase.com) | DB, Auth, Storage | `supabase/schema.sql` |
+
+> ⚠️ Set all `VITE_*` env vars in Vercel dashboard, and server-only secrets in Render — never commit `.env` to Git.
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Here's how:
+
+```bash
+# 1. Fork the repo and clone your fork
+git clone https://github.com/<your-username>/krishilink.git
+
+# 2. Create a feature branch
+git checkout -b feature/your-feature-name
+
+# 3. Make your changes and commit
+git commit -m "feat: add your feature"
+
+# 4. Push and open a Pull Request
+git push origin feature/your-feature-name
+```
+
+Please open an issue first for major changes.
+
+---
+
+## 📄 License
+
+[MIT](LICENSE) — built for learning and local farm-to-table commerce in India.
+
+---
+
+## 👩‍💻 Team — Tech Chaos
+
+| Name | GitHub | Email |
+|------|---------|-------|
+| **Sapna Jha** | [@sapnajha757](https://github.com/sapnajha757) | sapnajha2007@gmail.com |
+| **Vaishnavi** | [@vaishnavijha006-hub](https://github.com/vaishnavijha006-hub) | vaishnavijha006@gmail.com |
+
+---
+
+<div align="center">
+
+Built with ❤️ by **Team Tech Chaos** for Indian farmers
+
+[Live Demo](https://krishilink-delta.vercel.app) · [Report a Bug](https://github.com/sapnajha757/krishilink/issues) · [Request a Feature](https://github.com/sapnajha757/krishilink/issues)
+
+</div>
